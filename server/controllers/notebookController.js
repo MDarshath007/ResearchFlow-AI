@@ -2,6 +2,10 @@ import Document from '../models/Document.js';
 import Project from '../models/Project.js';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 
 // Helper to resolve file type based on mime/extension

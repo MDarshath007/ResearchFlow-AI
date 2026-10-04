@@ -136,8 +136,8 @@ export default function AnalyticsPage() {
     ]
   } : null;
 
-  // 3. Weekly Commits Line config
-  const commitData = analytics ? {
+  // 3. Weekly Commits Line config (real GitHub commit activity)
+  const commitData = analytics && Array.isArray(analytics.commitStats) && analytics.commitStats.length > 0 ? {
     labels: analytics.commitStats.map(d => d.week),
     datasets: [
       {
@@ -252,7 +252,7 @@ export default function AnalyticsPage() {
                   <span>Commit Frequency</span>
                 </h5>
                 <div style={{ height: '220px', position: 'relative' }}>
-                  {commitData && (
+                  {commitData ? (
                     <Line 
                       data={commitData} 
                       options={{
@@ -261,6 +261,10 @@ export default function AnalyticsPage() {
                         scales: { y: { beginAtZero: true } }
                       }} 
                     />
+                  ) : (
+                    <div className="h-100 d-flex align-items-center justify-content-center text-muted text-center small">
+                      No commit activity available.<br />Connect a public GitHub repository to see commit frequency.
+                    </div>
                   )}
                 </div>
               </Card>

@@ -16,6 +16,7 @@ export default function Projects() {
   const [loading, setLoading] = useState(true);
   const [repoLoading, setRepoLoading] = useState(false);
   const [gitDetails, setGitDetails] = useState(null);
+  const [repoError, setRepoError] = useState('');
 
   // Modal states
   const [showCreate, setShowCreate] = useState(false);
@@ -69,6 +70,7 @@ export default function Projects() {
 
   const fetchGitRepo = async (project) => {
     setGitDetails(null);
+    setRepoError('');
 
     if (!project?._id || !project.repositoryUrl) {
       return;
@@ -136,16 +138,20 @@ export default function Projects() {
     if (!repositoryUrl || !selectedProject) return;
 
     setRepoLoading(true);
+    setRepoError('');
     try {
       const res = await githubAPI.connect(selectedProject._id, repositoryUrl);
       if (res.data.success) {
         setRepositoryUrl('');
-        fetchGitRepo({ ...selectedProject, repositoryUrl: res.data.data.repoUrl });
+        setGitDetails(res.data.data);
         // Refresh project list to reflect repo URL
         fetchProjects(selectedProject._id);
       }
     } catch (err) {
-      console.error(err);
+      setRepoError(
+        err.response?.data?.message ||
+          'Failed to connect the repository. Please verify the URL and try again.'
+      );
     } finally {
       setRepoLoading(false);
     }
@@ -341,8 +347,8 @@ export default function Projects() {
 
                 {gitDetails ? (
                   <div>
-                    <div className="d-flex align-items-center justify-content-between p-3 bg-body-secondary rounded-3 border mb-3">
-                      <div>
+                    <div className="d-flex align-items-center justify-content-between p-3 bg-body-secondary rounded-3 border mb-3 flex-wrap gap-2">
+                      <div style={{ minWidth: 0 }}>
                         <div className="fw-semibold font-display text-primary d-flex align-items-center gap-2">
                           <Link2 size={16} />
                           <span>{gitDetails.repoName}</span>
@@ -351,39 +357,97 @@ export default function Projects() {
                           <span>{gitDetails.repoUrl}</span>
                           <ExternalLink size={12} />
                         </a>
+                        {gitDetails.description && (
+                          <div className="text-muted small text-truncate mt-1" style={{ maxWidth: '420px' }}>{gitDetails.description}</div>
+                        )}
                       </div>
                       <div className="d-flex gap-3 small">
-                        <div>★ {gitDetails.stars}</div>
-                        <div>⑂ {gitDetails.forks}</div>
+                        <div title="Stars">★ {gitDetails.stars ?? 0}</div>
+                        <div title="Forks">⑂ {gitDetails.forks ?? 0}</div>
                       </div>
                     </div>
 
-                    <div className="fw-semibold small mb-2 text-muted">Recent Repository Commits:</div>
-                    <ListGroup variant="flush">
-                      {gitDetails.commits?.slice(0, 3).map((commit, idx) => (
-                        <ListGroup.Item key={idx} className="px-0 py-2 border-0 bg-transparent d-flex justify-content-between align-items-start gap-2">
-                          <div style={{ minWidth: 0 }}>
-                            <div className="text-body small fw-semibold text-truncate">{commit.message}</div>
-                            <span className="text-muted" style={{ fontSize: '11px' }}>by {commit.author}</span>
-                          </div>
-                          <Badge bg="secondary-subtle" className="text-secondary-emphasis" style={{ fontSize: '10px' }}>{commit.sha}</Badge>
-                        </ListGroup.Item>
-                      ))}
-                    </ListGroup>
+                    {/* Real repository metadata from GitHub (shown only when available) */}
+                    <div className="d-flex flex-wrap gap-2 mb-3">
+                      {gitDetails.defaultBranch && (
+                        <Badge bg="primary-subtle" className="text-primary-emphasis" style={{ fontSize: '11px' }}>
+                          Branch: {gitDetails.defaultBranch}
+                        </Badge>
+                      )}
+                      {typeof gitDetails.openIssuesCount === 'number' && (
+                        <Badge bg="secondary-subtle" className="text-secondary-emphasis" style={{ fontSize: '11px' }}>
+                          Open issues: {gitDetails.openIssuesCount}
+                        </Badge>
+                      )}
+                      {gitDetails.license && (
+                        <Badge bg="secondary-subtle" className="text-secondary-emphasis" style={{ fontSize: '11px' }}>
+                          License: {gitDetails.license}
+                        </Badge>
+                      )}
+                      {gitDetails.pushedAt && (
+                        <Badge bg="secondary-subtle" className="text-secondary-emphasis" style={{ fontSize: '11px' }}>
+                          Last push: {new Date(gitDetails.pushedAt).toLocaleDateString()}
+                        </Badge>
+                      )}
+                      <Badge bg={gitDetails.readmePresent ? 'success-subtle' : 'secondary-subtle'} className={gitDetails.readmePresent ? 'text-success-emphasis' : 'text-secondary-emphasis'} style={{ fontSize: '11px' }}>
+                        README {gitDetails.readmePresent ? '✓' : '—'}
+                      </Badge>
+                      <Badge bg={(gitDetails.testFiles || []).length > 0 ? 'success-subtle' : 'secondary-subtle'} className={(gitDetails.testFiles || []).length > 0 ? 'text-success-emphasis' : 'text-secondary-emphasis'} style={{ fontSize: '11px' }}>
+                        Tests {(gitDetails.testFiles || []).length > 0 ? '✓' : '—'}
+                      </Badge>
+                      <Badge bg={(gitDetails.documentationFiles || []).length > 0 ? 'success-subtle' : 'secondary-subtle'} className={(gitDetails.documentationFiles || []).length > 0 ? 'text-success-emphasis' : 'text-secondary-emphasis'} style={{ fontSize: '11px' }}>
+                        Docs {(gitDetails.documentationFiles || []).length > 0 ? '✓' : '—'}
+                      </Badge>
+                      {gitDetails.lastSyncedAt && (
+                        <Badge bg="light" text="muted" className="border" style={{ fontSize: '11px' }}>
+                          Synced {new Date(gitDetails.lastSyncedAt).toLocaleString()}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="fw-semibold small mb-2 text-muted">
+                      {gitDetails.emptyRepository ? 'Repository is empty — no commits yet.' : 'Recent Repository Commits:'}
+                    </div>
+                    {!gitDetails.emptyRepository && (
+                      <ListGroup variant="flush">
+                        {(gitDetails.commits || []).length === 0 ? (
+                          <ListGroup.Item className="px-0 py-2 border-0 bg-transparent text-muted small">
+                            No commit data available.
+                          </ListGroup.Item>
+                        ) : (
+                          (gitDetails.commits || []).slice(0, 3).map((commit, idx) => (
+                            <ListGroup.Item key={idx} className="px-0 py-2 border-0 bg-transparent d-flex justify-content-between align-items-start gap-2">
+                              <div style={{ minWidth: 0 }}>
+                                <div className="text-body small fw-semibold text-truncate">{commit.message}</div>
+                                <span className="text-muted" style={{ fontSize: '11px' }}>by {commit.author}</span>
+                              </div>
+                              <Badge bg="secondary-subtle" className="text-secondary-emphasis" style={{ fontSize: '10px' }}>{commit.sha}</Badge>
+                            </ListGroup.Item>
+                          ))
+                        )}
+                      </ListGroup>
+                    )}
                   </div>
                 ) : (
-                  <Form onSubmit={handleConnectRepo} className="d-flex gap-2">
-                    <Form.Control
-                      type="url"
-                      placeholder="Paste repository link, e.g. https://github.com/user/project"
-                      value={repositoryUrl}
-                      onChange={(e) => setRepositoryUrl(e.target.value)}
-                      required
-                    />
-                    <Button type="submit" variant="primary" disabled={repoLoading}>
-                      {repoLoading ? <Spinner size="sm" /> : 'Connect'}
-                    </Button>
-                  </Form>
+                  <div>
+                    <Form onSubmit={handleConnectRepo} className="d-flex gap-2">
+                      <Form.Control
+                        type="url"
+                        placeholder="Paste repository link, e.g. https://github.com/user/project"
+                        value={repositoryUrl}
+                        onChange={(e) => setRepositoryUrl(e.target.value)}
+                        required
+                      />
+                      <Button type="submit" variant="primary" disabled={repoLoading}>
+                        {repoLoading ? <Spinner size="sm" /> : 'Connect'}
+                      </Button>
+                    </Form>
+                    {repoError && (
+                      <div className="alert alert-danger py-2 px-3 mt-3 mb-0 small" role="alert">
+                        {repoError}
+                      </div>
+                    )}
+                  </div>
                 )}
               </Card>
             </div>

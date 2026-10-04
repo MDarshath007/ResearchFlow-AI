@@ -14,8 +14,26 @@ const contributorSchema = new mongoose.Schema({
 });
 
 const weeklyContributionSchema = new mongoose.Schema({
-  week: String, // e.g. "Week 1", "2026-W34"
+  week: String, // e.g. "2026-W40" (real ISO week bucket from GitHub commits)
   commits: Number,
+});
+
+const issueSchema = new mongoose.Schema({
+  number: Number,
+  title: String,
+  state: String, // 'open' | 'closed'
+  author: String,
+  date: Date,
+  labels: [String],
+  severity: String, // first label, if any — null/undefined otherwise
+});
+
+const pullRequestSchema = new mongoose.Schema({
+  number: Number,
+  title: String,
+  state: String, // 'open' | 'closed' | 'merged'
+  author: String,
+  date: Date,
 });
 
 const repositorySchema = new mongoose.Schema(
@@ -33,6 +51,18 @@ const repositorySchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    owner: {
+      type: String,
+      default: '',
+    },
+    repo: {
+      type: String,
+      default: '',
+    },
+    description: {
+      type: String,
+      default: '',
+    },
     stars: {
       type: Number,
       default: 0,
@@ -41,9 +71,56 @@ const repositorySchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    openIssuesCount: {
+      type: Number,
+      default: 0,
+    },
+    defaultBranch: {
+      type: String,
+      default: '',
+    },
+    branches: [
+      {
+        _id: false,
+        name: String,
+        protected: Boolean,
+      },
+    ],
+    license: {
+      type: String,
+      default: '',
+    },
+    pushedAt: {
+      type: Date,
+      default: null,
+    },
+    emptyRepository: {
+      type: Boolean,
+      default: false,
+    },
     commits: [commitSchema],
     contributors: [contributorSchema],
     weeklyContributions: [weeklyContributionSchema],
+    issues: [issueSchema],
+    pullRequests: [pullRequestSchema],
+    readmePresent: {
+      type: Boolean,
+      default: false,
+    },
+    fileTreeCount: {
+      type: Number,
+      default: 0,
+    },
+    fileTreeTruncated: {
+      type: Boolean,
+      default: false,
+    },
+    documentationFiles: [String],
+    testFiles: [String],
+    lastSyncedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

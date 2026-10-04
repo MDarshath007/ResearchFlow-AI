@@ -132,7 +132,7 @@ export default function AssessmentReports() {
       }
     } catch (err) {
       console.error(err);
-      alert('Scanning failed. Make sure ZIP file format is valid.');
+      alert(err.response?.data?.message || 'Scanning failed. Make sure ZIP file format is valid.');
     } finally {
       setScanLoading(false);
     }
@@ -278,7 +278,7 @@ export default function AssessmentReports() {
                     <span>Trigger Codebase Scan</span>
                   </h4>
                   <p className="text-muted small">
-                    Run an automated RSE readiness sweep. By default, it runs a simulated validation on the connected repository URL. Upload a ZIP file containing the project source folder structure to perform an actual parse.
+                    Run an automated RSE readiness sweep. With no ZIP uploaded, the assessment analyses your connected GitHub repository. Upload a ZIP file containing the project source folder structure to perform an actual parse.
                   </p>
 
                   <Form onSubmit={handleScanCodebase} className="mt-4 border-top pt-4">
@@ -294,7 +294,7 @@ export default function AssessmentReports() {
 
                     <Button type="submit" className="w-100 btn-glow-primary py-2 fw-semibold d-flex align-items-center justify-content-center gap-2" disabled={scanLoading}>
                       {scanLoading ? <Spinner size="sm" /> : <RefreshCw size={16} />}
-                      <span>{codebaseFile ? 'Scan Zipped Directory' : 'Simulate Scan'}</span>
+                      <span>{codebaseFile ? 'Scan Zipped Directory' : 'Analyze Repository'}</span>
                     </Button>
                   </Form>
                 </Card>
@@ -345,6 +345,47 @@ export default function AssessmentReports() {
                           </ul>
                         </Col>
                       </Row>
+
+                      {/* Evidence-based findings */}
+                      {assessmentReport.details?.unmeasurable?.length > 0 && (
+                        <div className="alert alert-warning py-2 px-3 small mt-3 mb-0" role="alert">
+                          <strong>Not measured:</strong>{' '}
+                          {assessmentReport.details.unmeasurable.map((u) => `${u.category} — ${u.reason}`).join(' · ')}
+                        </div>
+                      )}
+
+                      {assessmentReport.details?.strengths?.length > 0 && (
+                        <div className="mt-3">
+                          <div className="fw-semibold small text-success mb-1">Strengths</div>
+                          <ul className="ps-3 mb-0 text-muted small" style={{ listStyleType: 'circle' }}>
+                            {assessmentReport.details.strengths.map((s, i) => (
+                              <li key={`s-${i}`} className="mb-1">{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {assessmentReport.details?.weaknesses?.length > 0 && (
+                        <div className="mt-3">
+                          <div className="fw-semibold small text-danger mb-1">Weaknesses</div>
+                          <ul className="ps-3 mb-0 text-muted small" style={{ listStyleType: 'circle' }}>
+                            {assessmentReport.details.weaknesses.map((w, i) => (
+                              <li key={`w-${i}`} className="mb-1">{w}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {assessmentReport.details?.recommendations?.length > 0 && (
+                        <div className="mt-3">
+                          <div className="fw-semibold small text-primary mb-1">Recommendations</div>
+                          <ul className="ps-3 mb-0 text-muted small" style={{ listStyleType: 'circle' }}>
+                            {assessmentReport.details.recommendations.map((r, i) => (
+                              <li key={`r-${i}`} className="mb-1">{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-5 text-muted">No assessment reports found. Trigger a scan above to calculate quality scores.</div>

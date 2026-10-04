@@ -53,22 +53,9 @@ const getProjectAnalytics = async (req, res) => {
       overall: r.overallScore,
     }));
 
-    // Fetch repository commits details if connected
-    let commitStats = [];
+    // Fetch real repository commit activity if connected (no fabricated fallback)
     const repo = await Repository.findOne({ project: projectId });
-    if (repo && repo.weeklyContributions) {
-      commitStats = repo.weeklyContributions;
-    } else {
-      // Mock defaults
-      commitStats = [
-        { week: 'W1', commits: 2 },
-        { week: 'W2', commits: 5 },
-        { week: 'W3', commits: 8 },
-        { week: 'W4', commits: 4 },
-        { week: 'W5', commits: 9 },
-        { week: 'W6', commits: 12 },
-      ];
-    }
+    const commitStats = repo && Array.isArray(repo.weeklyContributions) ? repo.weeklyContributions : [];
 
     res.json({
       success: true,
