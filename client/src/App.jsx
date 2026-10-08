@@ -16,6 +16,7 @@ import TeamWorkspacePage from './pages/TeamWorkspacePage';
 import AIMentorPage from './pages/AIMentorPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import ProfilePage from './pages/ProfilePage';
+import LearningModules from './pages/LearningModules';
 
 // Import Bootstrap CSS globally
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -54,6 +55,7 @@ function AppLayout() {
             <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/projects" element={<PrivateRoute><Projects /></PrivateRoute>} />
             <Route path="/assessments" element={<PrivateRoute><AssessmentReports /></PrivateRoute>} />
+            <Route path="/learning" element={<PrivateRoute><LearningModules /></PrivateRoute>} />
             <Route path="/workspace" element={<PrivateRoute><TeamWorkspacePage /></PrivateRoute>} />
             <Route path="/mentor" element={<PrivateRoute><AIMentorPage /></PrivateRoute>} />
             <Route path="/analytics" element={<PrivateRoute><AnalyticsPage /></PrivateRoute>} />

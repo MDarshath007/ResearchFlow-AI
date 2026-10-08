@@ -97,12 +97,16 @@ const SCAN_FILE_LIST_LIMIT = 200;
 // ---------------------------------------------------------------------------
 const buildZipEvidence = (zipPath) => {
   const zip = new AdmZip(zipPath);
+  // Windows-created ZIPs (e.g. PowerShell Compress-Archive) store entry paths
+  // with backslashes. Normalize to "/" BEFORE any path-based classification so
+  // directory rules (docs/, tests/, .github/workflows/) match consistently.
+  const entryPath = (e) => String(e.entryName).replace(/\\/g, '/');
   const entries = zip.getEntries().filter((e) => !e.isDirectory);
-  const files = entries.map((e) => e.entryName).filter((p) => !shouldSkip(p));
+  const files = entries.map(entryPath).filter((p) => !shouldSkip(p));
 
   const readmeEntry =
-    entries.find((e) => baseName(e.entryName).toLowerCase() === 'readme.md') ||
-    entries.find((e) => isReadme(e.entryName));
+    entries.find((e) => baseName(entryPath(e)).toLowerCase() === 'readme.md') ||
+    entries.find((e) => isReadme(entryPath(e)));
   let readmeContent = '';
   if (readmeEntry) {
     try {
@@ -114,7 +118,7 @@ const buildZipEvidence = (zipPath) => {
 
   // Test runner evidence from manifest contents
   let testFramework = detectFramework(files);
-  const pkgEntry = entries.find((e) => baseName(e.entryName) === 'package.json');
+  const pkgEntry = entries.find((e) => baseName(entryPath(e)) === 'package.json');
   if (pkgEntry && testFramework === 'None') {
     try {
       const pkg = JSON.parse(pkgEntry.getData().toString('utf8'));
@@ -130,7 +134,7 @@ const buildZipEvidence = (zipPath) => {
     }
   }
   if (testFramework === 'None') {
-    const reqEntries = entries.filter((e) => /^requirements.*\.txt$/i.test(baseName(e.entryName)));
+    const reqEntries = entries.filter((e) => /^requirements.*\.txt$/i.test(baseName(entryPath(e))));
     for (const r of reqEntries) {
       try {
         const body = r.getData().toString('utf8');
@@ -139,7 +143,7 @@ const buildZipEvidence = (zipPath) => {
     }
   }
 
-  const hasGitDir = entries.some((e) => e.entryName.includes('.git/'));
+  const hasGitDir = entries.some((e) => entryPath(e).includes('.git/'));
   const lowerFiles = files.map(lowerPath);
 
   return {
@@ -148,7 +152,7 @@ const buildZipEvidence = (zipPath) => {
     scannedFiles: files.slice(0, SCAN_FILE_LIST_LIMIT),
     files,
     readmeFound: !!readmeEntry,
-    readmePath: readmeEntry ? readmeEntry.entryName : null,
+    readmePath: readmeEntry ? entryPath(readmeEntry) : null,
     installGuideFound: (readmeEntry && /\b(install|setup|getting started|quick start)\b/i.test(readmeContent)) || files.some(isInstallDoc),
     apiDocsFound: (readmeEntry && /\b(api|endpoints|documentation)\b/i.test(readmeContent)) || files.some(isApiDoc),
     docsFiles: files.filter((f) => isDocFile(f) && !isReadme(f)),

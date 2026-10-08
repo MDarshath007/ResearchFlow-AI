@@ -41,6 +41,9 @@ export default function AssessmentReports() {
   const [docType, setDocType] = useState('readme');
   const [docText, setDocText] = useState('');
   const [docLoading, setDocLoading] = useState(false);
+  const [docSource, setDocSource] = useState(null); // 'gemini' | 'local-fallback'
+  const [docFallbackReason, setDocFallbackReason] = useState(null);
+  const [docError, setDocError] = useState(null);
 
   const location = useLocation();
 
@@ -143,13 +146,19 @@ export default function AssessmentReports() {
     if (!selectedProject) return;
     setDocLoading(true);
     setDocText('');
+    setDocSource(null);
+    setDocFallbackReason(null);
+    setDocError(null);
     try {
       const res = await aiAPI.generateDoc(selectedProject._id, { docType });
       if (res.data.success) {
         setDocText(res.data.data);
+        setDocSource(res.data.source || null);
+        setDocFallbackReason(res.data.fallbackReason || null);
       }
     } catch (err) {
       console.error(err);
+      setDocError(err.response?.data?.message || 'Document generation failed. Please try again.');
     } finally {
       setDocLoading(false);
     }
@@ -208,6 +217,7 @@ export default function AssessmentReports() {
       }
     } catch (err) {
       console.error(err);
+      alert(err.response?.data?.message || 'Reproducibility audit failed. Select valid project files and try again.');
     } finally {
       setScanLoading(false);
     }
@@ -425,6 +435,16 @@ export default function AssessmentReports() {
                 </Col>
 
                 <Col lg={8}>
+                  {docError && (
+                    <Alert variant="danger" className="py-2 small mb-3">
+                      {docError}
+                    </Alert>
+                  )}
+                  {docSource === 'local-fallback' && docText && (
+                    <Alert variant="warning" className="py-2 small mb-3">
+                      Generated from local templates — Gemini unavailable{docFallbackReason ? ` (${docFallbackReason})` : ''}. This document was not written by Gemini.
+                    </Alert>
+                  )}
                   {docLoading ? (
                     <div className="d-flex flex-column align-items-center justify-content-center border rounded-3 p-5" style={{ minHeight: '300px' }}>
                       <Spinner animation="grow" variant="primary" />
@@ -474,7 +494,7 @@ export default function AssessmentReports() {
                     <span>Check Environment Configs</span>
                   </h4>
                   <p className="text-muted small">
-                    Audit files like <code>requirements.txt</code>, <code>package.json</code>, <code>Dockerfile</code>, or <code>.env</code> configurations to detect unpinned dependencies, credential leakage, or missing runtime packaging.
+                    Audit files like <code>requirements.txt</code>, <code>package.json</code>, <code>Dockerfile</code>, or <code>.env</code> configurations to detect unpinned dependencies, credential leakage, or missing runtime packaging. Uploaded Jupyter <code>.ipynb</code> notebooks are analysed for cell order, saved outputs, randomness seeding, and declared imports.
                   </p>
 
                   <Form onSubmit={handleReproducibilityCheck} className="mt-4 border-top pt-4">
@@ -485,12 +505,12 @@ export default function AssessmentReports() {
                         multiple
                         onChange={(e) => setReproFiles(e.target.files)}
                       />
-                      <Form.Text className="text-muted small">Select multiple files (requirements.txt, Dockerfile, etc.) together.</Form.Text>
+                      <Form.Text className="text-muted small">Select multiple files together (requirements.txt, Dockerfile, .env, or .ipynb notebooks).</Form.Text>
                     </Form.Group>
 
                     <Button type="submit" className="w-100 btn-glow-primary py-2 fw-semibold d-flex align-items-center justify-content-center gap-2" disabled={scanLoading}>
                       {scanLoading ? <Spinner size="sm" /> : <Terminal size={16} />}
-                      <span>{reproFiles.length > 0 ? 'Run File Audit' : 'Simulate Audit'}</span>
+                      <span>{reproFiles.length > 0 ? 'Run File Audit' : 'Run Reproducibility Audit'}</span>
                     </Button>
                   </Form>
                 </Card>
@@ -525,6 +545,87 @@ export default function AssessmentReports() {
                           {reproReport.reproducibilityReport?.envExamplePresent ? '✓ .env config Present' : '⚠ .env configs Missing'}
                         </span>
                       </div>
+
+                      {/* Checks performed (deterministic evidence) */}
+                      {reproReport.reproducibilityReport?.checks?.length > 0 && (
+                        <div className="mt-3">
+                          <div className="fw-semibold small text-muted mb-2">
+                            Checks performed ({reproReport.reproducibilityReport.checks.length}) · {' '}
+                            <span className="text-success">{reproReport.reproducibilityReport.passedChecks?.length || 0} passed</span>
+                            {' · '}
+                            <span className="text-danger">{reproReport.reproducibilityReport.failedChecks?.length || 0} failed</span>
+                          </div>
+                          <div className="d-flex flex-column gap-1.5">
+                            {reproReport.reproducibilityReport.checks.map((check, idx) => (
+                              <div
+                                key={idx}
+                                className={`d-flex align-items-start gap-2 small border rounded px-2.5 py-1.5 ${
+                                  check.status === 'passed' ? 'border-success-subtle' :
+                                  check.status === 'failed' ? 'border-danger-subtle' :
+                                  check.status === 'warning' ? 'border-warning-subtle' : 'border-light'
+                                }`}
+                              >
+                                <span className={check.status === 'passed' ? 'text-success' :
+                                  check.status === 'failed' ? 'text-danger' :
+                                  check.status === 'warning' ? 'text-warning' : 'text-muted'}>
+                                  {check.status === 'passed' ? '✓' : check.status === 'failed' ? '✗' : check.status === 'warning' ? '⚠' : '○'}
+                                </span>
+                                <span className="text-muted">
+                                  <strong className="text-body">{check.label}</strong> — {check.detail}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Notebook analysis (.ipynb JSON inspection) */}
+                      {reproReport.reproducibilityReport?.notebooks?.length > 0 && (
+                        <div className="mt-4">
+                          <div className="fw-semibold small text-muted mb-2">
+                            Notebook analysis ({reproReport.reproducibilityReport.notebooks.length})
+                          </div>
+                          {reproReport.reproducibilityReport.notebooks.map((nb, idx) => (
+                            <div key={idx} className="border rounded p-3 mb-2 small">
+                              <div className="d-flex justify-content-between align-items-center mb-2">
+                                <span className="fw-semibold text-truncate me-2">{nb.file}</span>
+                                <Badge bg={nb.valid ? 'success' : 'danger'} className="flex-shrink-0">
+                                  {nb.valid ? `Valid nbformat ${nb.nbformat}` : 'Malformed'}
+                                </Badge>
+                              </div>
+                              {nb.valid ? (
+                                <ul className="mb-0 text-muted ps-3" style={{ listStyleType: 'circle' }}>
+                                  <li className="mb-1">Cells: {nb.cells.total} ({nb.cells.code} code, {nb.cells.markdown} markdown)</li>
+                                  <li className="mb-1">Executed: {nb.cells.executed}/{nb.cells.code} code cells · missing outputs: {nb.cells.missingOutputs}</li>
+                                  <li className="mb-1">
+                                    Execution order: {nb.execution.outOfOrder
+                                      ? `out of order${nb.execution.duplicateCounts?.length ? ` (re-run counts: ${nb.execution.duplicateCounts.join(', ')})` : ''}`
+                                      : nb.execution.counts.length > 0 ? 'top-to-bottom (strictly increasing)' : 'no executed cells'}
+                                    {nb.execution.gaps > 0 && ` · ${nb.execution.gaps} gap(s)`}
+                                  </li>
+                                  <li className="mb-1">Cells depending on earlier state: {nb.cells.stateDependent}</li>
+                                  <li className="mb-1">
+                                    Randomness: {nb.randomness.used ? nb.randomness.sources.join(', ') : 'none detected'}
+                                    {' · seed: '}
+                                    <strong className={!nb.randomness.seedSet && nb.randomness.used ? 'text-danger' : 'text-success'}>
+                                      {nb.randomness.seedSet ? `set (${nb.randomness.seedEvidence?.[0] || 'detected'})` : nb.randomness.used ? 'not set' : 'n/a'}
+                                    </strong>
+                                  </li>
+                                  <li className="mb-1">
+                                    Imports: {nb.imports.modules.length} module(s)
+                                    {nb.imports.thirdParty.length > 0 ? ` · third-party: ${nb.imports.thirdParty.join(', ')}` : ' · stdlib only'}
+                                  </li>
+                                  {nb.envVariables?.length > 0 && (
+                                    <li className="mb-1">Environment variables referenced: {nb.envVariables.join(', ')}</li>
+                                  )}
+                                </ul>
+                              ) : (
+                                <div className="text-danger small">⚠ {nb.error}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Suggestions list */}
                       {reproReport.reproducibilityReport?.suggestions?.length > 0 && (

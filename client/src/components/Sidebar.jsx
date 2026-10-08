@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FolderKanban, ShieldCheck, MessageSquare, BarChart3, UserCog, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, FolderKanban, ShieldCheck, MessageSquare, BarChart3, UserCog, GraduationCap, BookOpen } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar() {
@@ -34,6 +34,11 @@ export default function Sidebar() {
         <NavLink to="/assessments" className={({ isActive }) => `rse-sidebar-link ${isActive ? 'active' : ''}`}>
           <ShieldCheck size={18} />
           <span>Assessments</span>
+        </NavLink>
+
+        <NavLink to="/learning" className={({ isActive }) => `rse-sidebar-link ${isActive ? 'active' : ''}`}>
+          <BookOpen size={18} />
+          <span>Learning Modules</span>
         </NavLink>
 
         <NavLink to="/mentor" className={({ isActive }) => `rse-sidebar-link ${isActive ? 'active' : ''}`}>

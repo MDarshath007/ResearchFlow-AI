@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { aiAPI } from '../services/api';
+import { aiAPI, projectAPI } from '../services/api';
 import { MessageSquare, Send, Compass, User, Sparkles, BookOpen } from 'lucide-react';
 import { Container, Row, Col, Card, Button, Form, Spinner, ListGroup } from 'react-bootstrap';
 
@@ -12,6 +12,8 @@ export default function AIMentorPage() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [projects, setProjects] = useState([]);
+  const [contextProjectId, setContextProjectId] = useState('');
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -21,6 +23,17 @@ export default function AIMentorPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load the user's projects so the mentor can receive stored project evidence
+  useEffect(() => {
+    let active = true;
+    projectAPI.getAll()
+      .then((res) => {
+        if (active && res.data?.success) setProjects(res.data.data || []);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const handleSend = async (e, customText = null) => {
     if (e) e.preventDefault();
@@ -34,16 +47,22 @@ export default function AIMentorPage() {
 
     try {
       const history = messages.map(m => ({ role: m.role, text: m.text }));
-      const res = await aiAPI.mentorChat(textToSend, history);
-      
+      const res = await aiAPI.mentorChat(textToSend, history, contextProjectId || undefined);
+
       if (res.data.success) {
-        setMessages((prev) => [...prev, { role: 'model', text: res.data.data }]);
+        setMessages((prev) => [...prev, {
+          role: 'model',
+          text: res.data.data,
+          source: res.data.source,
+          fallbackReason: res.data.fallbackReason || null,
+        }]);
       }
     } catch (err) {
       console.error(err);
+      const errMsg = err.response?.data?.message || 'Sorry, I encountered an error. Please verify server connections.';
       setMessages((prev) => [
         ...prev,
-        { role: 'model', text: 'Sorry, I encountered an error. Please verify server connections.' },
+        { role: 'model', text: errMsg, isError: true },
       ]);
     } finally {
       setLoading(false);
@@ -72,7 +91,28 @@ export default function AIMentorPage() {
               <BookOpen className="text-primary" />
               <span>Recommended Topics</span>
             </h5>
-            <p className="text-muted small mb-4">Click any topic to ask the AI mentor for detailed instructions and boilerplate templates.</p>
+            <p className="text-muted small mb-3">Click any topic to ask the AI mentor for detailed instructions and boilerplate templates.</p>
+
+            {/* Optional: ground the mentor in stored project evidence */}
+            <div className="mb-3">
+              <Form.Label className="small fw-semibold mb-1">Project context (optional)</Form.Label>
+              <Form.Select
+                size="sm"
+                value={contextProjectId}
+                onChange={(e) => setContextProjectId(e.target.value)}
+                aria-label="Select project context"
+              >
+                <option value="">No project context — general questions only</option>
+                {projects.map((p) => (
+                  <option key={p._id} value={p._id}>{p.name}</option>
+                ))}
+              </Form.Select>
+              {contextProjectId && (
+                <div className="text-muted mt-1" style={{ fontSize: '11px' }}>
+                  The mentor will answer project questions from this project's stored assessment, reproducibility and GitHub evidence.
+                </div>
+              )}
+            </div>
 
             <ListGroup variant="flush">
               {tutorials.map((tut, i) => (
@@ -103,8 +143,15 @@ export default function AIMentorPage() {
                          style={{ width: '32px', height: '32px', background: m.role === 'user' ? 'var(--bs-primary-bg-subtle)' : 'var(--bs-secondary-bg-subtle)' }}>
                       {m.role === 'user' ? <User size={16} /> : <Compass size={16} className="text-primary" />}
                     </div>
-                    <div className={`p-3 rounded-3 border ${m.role === 'user' ? 'bg-primary text-white border-primary' : 'bg-body border-light-subtle'}`} style={{ whiteSpace: 'pre-line' }}>
-                      {m.text}
+                    <div className="flex-grow-1">
+                      <div className={`p-3 rounded-3 border ${m.role === 'user' ? 'bg-primary text-white border-primary' : 'bg-body border-light-subtle'}`} style={{ whiteSpace: 'pre-line' }}>
+                        {m.text}
+                      </div>
+                      {m.source === 'local-fallback' && (
+                        <div className="text-warning mt-1 d-flex align-items-center gap-1" style={{ fontSize: '11px' }}>
+                          <span>⚠ Local fallback — Gemini unavailable{m.fallbackReason ? `: ${m.fallbackReason}` : ''}. This reply was not generated by Gemini.</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

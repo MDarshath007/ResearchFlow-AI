@@ -15,6 +15,7 @@ import githubRoutes from './routes/githubRoutes.js';
 import collaborationRoutes from './routes/collaborationRoutes.js';
 import notebookRoutes from './routes/notebookRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
+import learningRoutes from './routes/learningRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,7 @@ app.use('/api/github', githubRoutes);
 app.use('/api/collaboration', collaborationRoutes);
 app.use('/api/notebooks', notebookRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/learning', learningRoutes);
 
 // Basic testing route
 app.get('/', (req, res) => {

@@ -81,7 +81,13 @@ export const assessmentAPI = {
 export const aiAPI = {
   generateDoc: (projectId, data) => API.post(`/ai/generate-doc/${projectId}`, data),
   exportPdf: (data) => API.post('/ai/export-pdf', data, { responseType: 'blob' }),
-  mentorChat: (message, chatHistory) => API.post('/ai/mentor-chat', { message, chatHistory }),
+  // projectId is optional: when provided the mentor receives stored project evidence
+  mentorChat: (message, chatHistory, projectId) =>
+    API.post('/ai/mentor-chat', {
+      message,
+      chatHistory,
+      ...(projectId ? { projectId } : {}),
+    }),
 };
 
 export const reproducibilityAPI = {
@@ -120,6 +126,13 @@ export const notebookAPI = {
 export const analyticsAPI = {
   getProject: (projectId) => API.get(`/analytics/project/${projectId}`),
   getLeaderboard: () => API.get('/analytics/leaderboard'),
+};
+
+export const learningAPI = {
+  getModules: () => API.get('/learning/modules'),
+  getModule: (id) => API.get(`/learning/modules/${id}`),
+  submitQuiz: (id, answers) => API.post(`/learning/modules/${id}/quiz`, { answers }),
+  completeModule: (id) => API.post(`/learning/modules/${id}/complete`),
 };
 
 export default API;

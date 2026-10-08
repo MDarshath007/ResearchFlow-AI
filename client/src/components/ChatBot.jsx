@@ -34,18 +34,25 @@ export default function ChatBot() {
     setLoading(true);
 
     try {
-      // Send message to backend, including simplified history
+      // Send message to backend, including simplified history.
+      // No project context is available in this global widget — projectId omitted.
       const history = messages.map(m => ({ role: m.role, text: m.text }));
       const res = await aiAPI.mentorChat(textToSend, history);
       
       if (res.data.success) {
-        setMessages((prev) => [...prev, { role: 'model', text: res.data.data }]);
+        setMessages((prev) => [...prev, {
+          role: 'model',
+          text: res.data.data,
+          source: res.data.source,
+          fallbackReason: res.data.fallbackReason || null,
+        }]);
       }
     } catch (err) {
       console.error(err);
+      const errMsg = err.response?.data?.message || 'Sorry, I encountered an error connecting to the AI service. Please try again.';
       setMessages((prev) => [
         ...prev,
-        { role: 'model', text: 'Sorry, I encountered an error connecting to the AI service. Please try again.' },
+        { role: 'model', text: errMsg, isError: true },
       ]);
     } finally {
       setLoading(false);
@@ -102,8 +109,15 @@ export default function ChatBot() {
                        style={{ width: '28px', height: '28px', background: m.role === 'user' ? 'var(--bs-primary-bg-subtle)' : 'var(--bs-secondary-bg-subtle)' }}>
                     {m.role === 'user' ? <User size={14} /> : <Compass size={14} className="text-primary" />}
                   </div>
-                  <div className={`p-2.5 rounded-3 border ${m.role === 'user' ? 'bg-primary text-white border-primary' : 'bg-body border-light-subtle'}`} style={{ whiteSpace: 'pre-line' }}>
-                    {m.text}
+                  <div className="flex-grow-1">
+                    <div className={`p-2.5 rounded-3 border ${m.role === 'user' ? 'bg-primary text-white border-primary' : 'bg-body border-light-subtle'}`} style={{ whiteSpace: 'pre-line' }}>
+                      {m.text}
+                    </div>
+                    {m.source === 'local-fallback' && (
+                      <div className="text-warning mt-1" style={{ fontSize: '10.5px' }}>
+                        ⚠ Local fallback — Gemini unavailable{m.fallbackReason ? `: ${m.fallbackReason}` : ''}. Not a Gemini reply.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

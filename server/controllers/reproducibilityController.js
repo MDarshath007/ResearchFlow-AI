@@ -80,6 +80,7 @@ const SEED_PATTERNS = [
   /\brandom_state\s*=\s*\d+/,
   /\bseed\s*=\s*\d+/,
   /\bdefault_rng\s*\(\s*\d+/,
+  /\bRandomState\s*\(\s*\d+/,
   /\btorch\.manual_seed\s*\(/,
   /\btf\.random\.set_seed\s*\(/,
   /\bset_seed\s*\(/,
@@ -354,7 +355,7 @@ const checkReproducibility = async (req, res) => {
         let corrupt = false;
         try {
           const pkg = JSON.parse(content);
-          const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+          const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
           Object.entries(deps).forEach(([depName, version]) => {
             declaredPackages.add(depName.toLowerCase());
@@ -368,7 +369,7 @@ const checkReproducibility = async (req, res) => {
             recommendations.push('Pin NPM dependency versions (e.g. change "^1.2.0" to "1.2.0") to lock environment builds.');
             score -= Math.min(pkgUnpinned * 4, 15);
           }
-        } catch (e) {
+        } catch {
           corrupt = true;
           warnings.push('package.json JSON structure is corrupted.');
           score -= 10;
@@ -391,7 +392,7 @@ const checkReproducibility = async (req, res) => {
         lines.forEach((line) => {
           const trimmed = line.trim();
           if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('-')) {
-            const pkgName = (trimmed.split(/[=<>!~\[\s]/)[0] || '').toLowerCase();
+            const pkgName = (trimmed.split(/[=<>!~[\s]/)[0] || '').toLowerCase();
             if (pkgName) declaredPackages.add(pkgName);
             // Check if pinned (has ==)
             if (!trimmed.includes('==') && !trimmed.includes('<=') && !trimmed.includes('>=')) {
@@ -525,7 +526,7 @@ const checkReproducibility = async (req, res) => {
             `${cells.missingOutputs}/${cells.executed} executed cells have no saved outputs — results cannot be verified`);
           warnings.push(`Notebook ${tag}: outputs appear to be missing or stripped for most cells.`);
           recommendations.push(`Re-run ${tag} and save it without stripping outputs so results can be verified.`);
-          score -= 10;
+          score -= 20;
         } else {
           addCheck('notebook-outputs', `Saved outputs (${tag})`, 'warning',
             `${cells.missingOutputs}/${cells.executed} executed cells have empty outputs`);
@@ -564,7 +565,7 @@ const checkReproducibility = async (req, res) => {
       }
 
       // --- imports vs declared dependencies
-      const localModules = new Set([...uploadedSourceNames]);
+      const localModules = uploadedSourceNames;
       const undeclared = imports.thirdParty.filter(
         (m) => !declaredPackages.has(m) && !localModules.has(m)
       );
