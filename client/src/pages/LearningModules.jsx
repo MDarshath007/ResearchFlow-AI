@@ -42,9 +42,13 @@ export default function LearningModules() {
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState(null);
 
-  const loadList = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadList = useCallback(async (showSpinner = true) => {
+    // On mount (effect) the initial loading state is already true, so only
+    // flip it synchronously when called from an event handler (retry/back).
+    if (showSpinner) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await learningAPI.getModules();
       if (res.data?.success) {
@@ -62,8 +66,9 @@ export default function LearningModules() {
   }, []);
 
   useEffect(() => {
-    loadList();
-  }, [loadList]);
+    loadList(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openModule = async (id) => {
     setModuleLoading(true);
@@ -281,6 +286,7 @@ export default function LearningModules() {
                     </div>
                     {q.options.map((opt, oi) => (
                       <Form.Check
+                        key={`${q._id}-${oi}`}
                         type="radio"
                         id={`q-${q._id}-${oi}`}
                         name={`q-${q._id}`}
