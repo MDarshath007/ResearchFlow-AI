@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { projectAPI, authAPI } from '../services/api';
-import { Award, User, Mail, Shield, CheckCircle, Download, FileText, Star, Trophy, Camera, Trash2, Upload } from 'lucide-react';
-import { Container, Row, Col, Card, Button, Badge, Modal, Spinner, ListGroup, Alert } from 'react-bootstrap';
+import { Award, Mail, Shield, Download, FileText, Star, Trophy, Camera, Trash2, Upload } from 'lucide-react';
+import { Row, Col, Card, Button, Badge, Modal, Spinner, ListGroup, Alert } from 'react-bootstrap';
 import UserAvatar from '../components/UserAvatar';
 
 export default function ProfilePage() {
@@ -26,6 +26,10 @@ export default function ProfilePage() {
         }
       } catch (err) {
         console.error(err);
+        setAvatarMessage({
+          type: 'danger',
+          text: err.response?.data?.message || 'Failed to load your projects.',
+        });
       } finally {
         setLoading(false);
       }

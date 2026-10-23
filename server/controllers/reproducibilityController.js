@@ -1,6 +1,8 @@
 import fs from 'fs';
+import path from 'path';
 import Project from '../models/Project.js';
 import Report from '../models/Report.js';
+import { safeUnlink } from '../middleware/uploadMiddleware.js';
 
 
 // ---------------------------------------------------------------------------
@@ -254,13 +256,13 @@ const analyzeNotebook = (rawContent, filename) => {
 // @access  Private
 const checkReproducibility = async (req, res) => {
   const { projectId } = req.params;
+  const rawFiles = Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []);
+  const files = rawFiles.filter((f) => f && typeof f === 'object' && f.path && typeof f.path === 'string');
 
   try {
     const project = await Project.findById(projectId);
     if (!project) {
-      if (req.files) {
-        req.files.forEach(f => fs.unlinkSync(f.path));
-      }
+      files.forEach((f) => safeUnlink(f.path));
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
@@ -289,7 +291,6 @@ const checkReproducibility = async (req, res) => {
 
     let score = 100;
 
-    const files = req.files && req.files.length > 0 ? req.files : [];
     if (files.length === 0) {
       // Never fabricate an audit — there must be real files to analyse.
       return res.status(400).json({
@@ -306,14 +307,27 @@ const checkReproducibility = async (req, res) => {
     const uploadedSourceNames = new Set();
     const envFileKeys = new Set();
 
+    const BINARY_OR_PDF_EXTS = new Set([
+      '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.zip', '.tar', '.gz',
+      '.exe', '.bin', '.pkl', '.h5', '.pt', '.pth', '.parquet', '.npy', '.npz',
+      '.doc', '.docx', '.xls', '.xlsx'
+    ]);
+
     files.forEach((file) => {
       const filename = file.originalname.toLowerCase();
+      const ext = path.extname(filename).toLowerCase();
+
+      // Safely skip binary and PDF files from text/manifest inspection
+      if (BINARY_OR_PDF_EXTS.has(ext)) {
+        warnings.push(`File "${file.originalname}" is a binary/PDF file and was skipped from text-based reproducibility auditing.`);
+        return;
+      }
+
       let content;
       try {
         content = fs.readFileSync(file.path, 'utf8');
       } catch (readErr) {
         warnings.push(`File ${file.originalname} could not be read and was skipped (${readErr.message}).`);
-        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
         return;
       }
 
@@ -442,9 +456,6 @@ const checkReproducibility = async (req, res) => {
           exposed > 0 ? `${exposed} populated secret-looking value(s) found` : 'No populated secret values found'
         );
       }
-
-      // Delete temp uploaded file
-      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
     });
 
     // Skipped checks for config types not included in the audit inputs
@@ -650,12 +661,10 @@ const checkReproducibility = async (req, res) => {
       message: 'Reproducibility check completed successfully',
       data: report,
     });
-
   } catch (error) {
-    if (req.files) {
-      req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
-    }
     res.status(500).json({ success: false, message: error.message });
+  } finally {
+    files.forEach((f) => safeUnlink(f.path));
   }
 };
 

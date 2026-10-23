@@ -89,4 +89,5 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+// oxlint-disable-next-line react/only-export-components -- standard Context + custom hook pattern
 export const useAuth = () => useContext(AuthContext);

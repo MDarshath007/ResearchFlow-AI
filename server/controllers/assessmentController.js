@@ -1,17 +1,9 @@
 import AdmZip from 'adm-zip';
-import fs from 'fs';
 import Project from '../models/Project.js';
 import Report from '../models/Report.js';
 import Repository from '../models/Repository.js';
-
-
-// Helper to determine maturity level (unchanged thresholds)
-const getMaturityLevel = (score) => {
-  if (score <= 40) return 'Bronze';
-  if (score <= 70) return 'Silver';
-  if (score <= 90) return 'Gold';
-  return 'Platinum';
-};
+import { getMaturityLevel, calculateHealthScore, getProjectAssessmentReports } from '../services/reportingService.js';
+import { safeUnlink } from '../middleware/uploadMiddleware.js';
 
 // ---------------------------------------------------------------------------
 // Deterministic file classifiers (no randomness — same input => same output)
@@ -505,12 +497,12 @@ const buildInsights = (categories, ev, project) => {
 const scanProjectCodebase = async (req, res) => {
   const { projectId } = req.params;
 
-  let zipPath = req.file ? req.file.path : null;
+  let zipPath = (req.file && typeof req.file === 'object' && req.file.path) ? req.file.path : null;
 
   try {
     const project = await Project.findById(projectId);
     if (!project) {
-      if (zipPath) fs.unlinkSync(zipPath);
+      if (zipPath) safeUnlink(zipPath);
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
@@ -523,7 +515,7 @@ const scanProjectCodebase = async (req, res) => {
       } catch (zipErr) {
         zipError = zipErr.message;
       } finally {
-        if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+        safeUnlink(zipPath);
         zipPath = null;
       }
     }
@@ -658,20 +650,7 @@ const scanProjectCodebase = async (req, res) => {
     // --- Update project state
     project.maturityScore = overallScore;
     project.maturityLevel = maturityLevel;
-
-    // Health score = weighted average over measurable categories only
-    const healthWeights = [
-      [categories.testing, 0.4],
-      [categories.documentation, 0.3],
-      [categories.git, 0.3],
-    ];
-    const weighted = healthWeights.filter(([c]) => c.measured);
-    if (weighted.length > 0) {
-      const totalWeight = weighted.reduce((acc, [, w]) => acc + w, 0);
-      project.healthScore = Math.round(
-        weighted.reduce((acc, [c, w]) => acc + c.score * w, 0) / totalWeight
-      );
-    }
+    project.healthScore = calculateHealthScore(categories);
     await project.save();
 
     res.status(200).json({
@@ -685,7 +664,7 @@ const scanProjectCodebase = async (req, res) => {
       },
     });
   } catch (error) {
-    if (zipPath && fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+    if (zipPath) safeUnlink(zipPath);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -695,9 +674,7 @@ const scanProjectCodebase = async (req, res) => {
 // @access  Private
 const getAssessmentsByProject = async (req, res) => {
   try {
-    const reports = await Report.find({ project: req.params.projectId, type: 'Assessment' })
-      .sort({ createdAt: -1 });
-
+    const reports = await getProjectAssessmentReports(req.params.projectId);
     res.json({ success: true, data: reports });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

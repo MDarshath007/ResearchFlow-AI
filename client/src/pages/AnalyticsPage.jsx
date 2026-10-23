@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { projectAPI, analyticsAPI } from '../services/api';
-import { BarChart3, Trophy, CheckSquare, Sparkles, FolderGit } from 'lucide-react';
-import { Container, Row, Col, Card, Form, Table, Spinner, Badge } from 'react-bootstrap';
+import { BarChart3, Trophy, CheckSquare, FolderGit } from 'lucide-react';
+import { Row, Col, Card, Form, Table, Spinner, Badge, Alert } from 'react-bootstrap';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 
@@ -22,9 +22,9 @@ export default function AnalyticsPage() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
-  const [platformStats, setPlatformStats] = useState(null);
 
   const location = useLocation();
 
@@ -37,6 +37,7 @@ export default function AnalyticsPage() {
       }
     } catch (err) {
       console.error(err);
+      setError(err.response?.data?.message || 'Failed to load project analytics data.');
     }
   };
 
@@ -69,10 +70,10 @@ export default function AnalyticsPage() {
         const leadRes = await analyticsAPI.getLeaderboard();
         if (leadRes.data.success) {
           setLeaderboard(leadRes.data.data.leaderboard);
-          setPlatformStats(leadRes.data.data.platformStats);
         }
       } catch (err) {
         console.error(err);
+        setError(err.response?.data?.message || 'Failed to load platform analytics.');
       } finally {
         setLoading(false);
       }
@@ -181,6 +182,11 @@ export default function AnalyticsPage() {
 
   return (
     <div className="fade-in-slide p-4 workspace-page analytics-page">
+      {error && (
+        <Alert variant="danger" dismissible onClose={() => setError(null)} className="mb-4">
+          <strong>Notice:</strong> {error}
+        </Alert>
+      )}
       {/* Header */}
       <div className="page-heading d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>

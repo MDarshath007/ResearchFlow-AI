@@ -1,8 +1,8 @@
 import Project from '../models/Project.js';
 import Task from '../models/Task.js';
-import Report from '../models/Report.js';
 import User from '../models/User.js';
 import Repository from '../models/Repository.js';
+import { getProjectAssessmentReports, formatScoreHistory } from '../services/reportingService.js';
 
 
 // @desc    Get dashboard metrics & analytics for project
@@ -40,18 +40,11 @@ const getProjectAnalytics = async (req, res) => {
     }));
 
     // Historical quality scores (reports)
-    const reports = await Report.find({ project: projectId, type: 'Assessment' })
-      .sort({ createdAt: 1 })
-      .limit(6);
-
-    const scoreHistory = reports.map((r) => ({
-      date: new Date(r.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      documentation: r.documentationScore,
-      testing: r.testingScore,
-      git: r.gitScore,
-      collaboration: r.collaborationScore,
-      overall: r.overallScore,
-    }));
+    const reports = await getProjectAssessmentReports(projectId, {
+      sort: { createdAt: 1 },
+      limit: 6,
+    });
+    const scoreHistory = formatScoreHistory(reports);
 
     // Fetch real repository commit activity if connected (no fabricated fallback)
     const repo = await Repository.findOne({ project: projectId });

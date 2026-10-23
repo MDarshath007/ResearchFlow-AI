@@ -21,10 +21,11 @@ const req = async (method, url, { token, body, form } = {}) => {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body) headers["Content-Type"] = "application/json";
+  const payload = form ? form : body ? JSON.stringify(body) : undefined;
   const res = await fetch(BASE + url, {
     method,
     headers,
-    body: form ? form : body ? JSON.stringify(body) : undefined,
+    ...(method !== "GET" && payload !== undefined ? { body: payload } : {}),
   });
   let json = null;
   try {
@@ -56,8 +57,6 @@ let modules = [];
 let testingModule = null;
 let quizQuestions = [];
 let projectId = null;
-
-const results = [];
 
 async function main() {
   // ── Setup: register two temp users ────────────────────────────────────
@@ -451,7 +450,9 @@ async function main() {
   }
 
   // ── 14. Existing non-learning functionality still works ───────────────
-  r = await fetch("http://localhost:5000/");
+  // Root URL derived from BASE so the suite works on any port (not hardcoded :5000)
+  const ROOT = BASE.replace(/\/api\/?$/, "");
+  r = await fetch(`${ROOT}/`);
   let rootJson = null;
   try {
     rootJson = await r.json();

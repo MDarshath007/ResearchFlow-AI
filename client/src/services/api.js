@@ -1,8 +1,12 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL,
 });
+
+if (!import.meta.env.VITE_API_URL && import.meta.env.DEV) {
+  console.warn('VITE_API_URL is not set — API requests will fail. Copy client/.env.example to client/.env.');
+}
 
 
 // Interceptor to add auth token dynamically from localStorage
@@ -42,8 +46,6 @@ export const authAPI = {
   login: (credentials) => API.post('/auth/login', credentials),
   register: (userData) => API.post('/auth/register', userData),
   getProfile: () => API.get('/auth/profile'),
-  forgotPassword: (email) => API.post('/auth/forgot-password', { email }),
-  verifyEmail: () => API.post('/auth/verify-email'),
   uploadAvatar: (formData) =>
     API.post('/auth/avatar', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -70,11 +72,13 @@ export const taskAPI = {
 };
 
 export const assessmentAPI = {
+  // formData is optional — omit it to run the scan from stored evidence only.
   scan: (projectId, formData) =>
-    API.post(`/assessments/scan/${projectId}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
-  scanSimulated: (projectId) => API.post(`/assessments/scan/${projectId}`),
+    formData
+      ? API.post(`/assessments/scan/${projectId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      : API.post(`/assessments/scan/${projectId}`),
   getByProject: (projectId) => API.get(`/assessments/project/${projectId}`),
 };
 
@@ -91,11 +95,13 @@ export const aiAPI = {
 };
 
 export const reproducibilityAPI = {
+  // files (FormData) is optional — omit it to audit stored evidence only.
   check: (projectId, formData) =>
-    API.post(`/reproducibility/check/${projectId}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
-  checkSimulated: (projectId) => API.post(`/reproducibility/check/${projectId}`),
+    formData
+      ? API.post(`/reproducibility/check/${projectId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      : API.post(`/reproducibility/check/${projectId}`),
   getByProject: (projectId) => API.get(`/reproducibility/project/${projectId}`),
 };
 

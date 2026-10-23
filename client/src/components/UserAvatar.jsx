@@ -5,7 +5,7 @@ export default function UserAvatar({ user, src, name, size = 38, className = '',
   const rawAvatar = src || user?.avatar;
   const displayName = name || user?.username || 'User';
 
-  const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000';
+  const serverUrl = import.meta.env.VITE_SERVER_URL;
   const fullSrc = rawAvatar && rawAvatar.startsWith('/uploads')
     ? `${serverUrl}${rawAvatar}`
     : rawAvatar;

@@ -1,39 +1,45 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { projectAPI, collaborationAPI, taskAPI } from '../services/api';
+import { projectAPI, collaborationAPI } from '../services/api';
 import MaturityBadge from '../components/MaturityBadge';
 import { FolderKanban, ShieldCheck, Clock, UserPlus, FileCode, CheckSquare, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Container, Row, Col, Card, Button, Spinner, Table, ListGroup, ProgressBar } from 'react-bootstrap';
+import { Row, Col, Card, Button, Spinner, Table, ListGroup, ProgressBar, Alert } from 'react-bootstrap';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const projRes = await projectAPI.getAll();
-        if (projRes.data.success) {
-          setProjects(projRes.data.data);
-          
-          // Get activities from the first project if projects exist
-          if (projRes.data.data.length > 0) {
-            const actRes = await collaborationAPI.getActivity(projRes.data.data[0]._id);
-            if (actRes.data.success) {
-              setActivities(actRes.data.data);
-            }
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const projRes = await projectAPI.getAll();
+      if (projRes.data.success) {
+        setProjects(projRes.data.data);
+        
+        // Get activities from the first project if projects exist
+        if (projRes.data.data.length > 0) {
+          const actRes = await collaborationAPI.getActivity(projRes.data.data[0]._id);
+          if (actRes.data.success) {
+            setActivities(actRes.data.data);
           }
         }
-      } catch (err) {
-        console.error('Failed to load dashboard data:', err);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err);
+      setError(err.response?.data?.message || 'Failed to load dashboard metrics. Please verify the backend API server is operational.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    // Intentional one-time data fetch on mount (loading spinner covers the async gap).
+    // oxlint-disable-next-line react/set-state-in-effect
     fetchDashboardData();
   }, []);
 
@@ -65,6 +71,13 @@ export default function Dashboard() {
           <span>New Project</span>
         </Button>
       </div>
+
+      {error && (
+        <Alert variant="danger" dismissible onClose={() => setError(null)} className="d-flex align-items-center justify-content-between mb-4">
+          <div><strong>Connection Notice:</strong> {error}</div>
+          <Button variant="outline-danger" size="sm" onClick={fetchDashboardData}>Retry</Button>
+        </Alert>
+      )}
 
       {/* Metrics Row */}
       <Row className="metric-grid g-3 mb-4">

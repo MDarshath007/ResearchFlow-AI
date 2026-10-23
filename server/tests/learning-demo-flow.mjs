@@ -4,7 +4,7 @@
 // → recommendation from actual weakness.
 const BASE = 'http://localhost:5052/api';
 const stamp = Date.now().toString(36);
-const USER = { name: 'Demo Flow', email: `demoflow-${stamp}@example.com`, password: 'Test@1234' };
+const USER = { username: 'Demo Flow', email: `demoflow-${stamp}@example.com`, password: 'Test@1234' };
 let failures = 0;
 const step = (n, ok, detail) => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  Step ${n}${detail ? ' — ' + detail : ''}`);
@@ -17,7 +17,7 @@ const call = async (method, url, token, body) => {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    ...(method !== 'GET' && body ? { body: JSON.stringify(body) } : {}),
   });
   let json = null;
   try { json = await res.json(); } catch {}
@@ -27,10 +27,10 @@ const call = async (method, url, token, body) => {
 const run = async () => {
   // 1. Login (register acts as first login; then verify login works)
   let r = await call('POST', '/auth/register', null, USER);
-  const token = r.json?.token;
-  step('1. Register/login', !!token);
+  const token = r.json?.data?.token;
+  step('1. Register/login', !!token, r.json?.message);
   r = await call('POST', '/auth/login', null, { email: USER.email, password: USER.password });
-  const loginToken = r.json?.token;
+  const loginToken = r.json?.data?.token;
   step('1b. Login with same credentials', !!loginToken);
   const T = loginToken || token;
 
@@ -72,7 +72,7 @@ const run = async () => {
     `completed ${after?.progress?.completed}, quizScore ${after?.progress?.quizScore}`);
 
   // 8. Open RSE assessment → create real assessment from test-less ZIP
-  r = await call('POST', '/projects', T, { title: `Demo ${stamp}`, description: 'demo flow project' });
+  r = await call('POST', '/projects', T, { name: `Demo ${stamp}`, description: 'demo flow project', domain: 'General Research' });
   const projectId = r.json?.data?._id || r.json?._id;
   const form = new FormData();
   const fs = await import('fs');

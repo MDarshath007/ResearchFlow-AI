@@ -1,18 +1,22 @@
+// react-hooks/exhaustive-deps: the mount effect below intentionally calls the
+// component-scoped fetchWorkspaceData helper (recreated each render); listing it
+// as a dependency would cause refetch loops.
+/* oxlint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { projectAPI, taskAPI, collaborationAPI, notebookAPI } from '../services/api';
 import { 
-  FolderKanban, MessageSquare, Plus, FileText, CheckSquare, 
+  MessageSquare, Plus, FileText, CheckSquare, 
   Send, Trash2, Calendar, ClipboardList, Clock, Search, Upload, Download 
 } from 'lucide-react';
-import { Container, Row, Col, Card, Button, Badge, Modal, Form, Spinner, Tabs, Tab, ListGroup, Table } from 'react-bootstrap';
+import { Row, Col, Card, Button, Badge, Modal, Form, Spinner, Tabs, Tab, ListGroup, Table, Alert } from 'react-bootstrap';
 import UserAvatar from '../components/UserAvatar';
 
 export default function TeamWorkspacePage() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('kanban');
 
   // Kanban states
@@ -33,7 +37,6 @@ export default function TeamWorkspacePage() {
   // Chat states
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
 
   // Notebooks states
   const [documents, setDocuments] = useState([]);
@@ -50,6 +53,9 @@ export default function TeamWorkspacePage() {
 
   // Activity logs states
   const [activities, setActivities] = useState([]);
+
+  // Shared inline error for mutation handlers (task ops, chat, docs)
+  const [actionError, setActionError] = useState(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -82,6 +88,7 @@ export default function TeamWorkspacePage() {
       }
     } catch (err) {
       console.error(err);
+      setError(err.response?.data?.message || 'Failed to load project workspace data.');
     }
   };
 
@@ -113,6 +120,7 @@ export default function TeamWorkspacePage() {
         }
       } catch (err) {
         console.error(err);
+        setError(err.response?.data?.message || 'Failed to initialize workspace projects.');
       } finally {
         setLoading(false);
       }
@@ -131,7 +139,7 @@ export default function TeamWorkspacePage() {
         if (chatRes.data.success) {
           setChatMessages(chatRes.data.data);
         }
-      } catch (e) {
+      } catch {
         // Ignore errors during poll
       }
     }, 4000);
@@ -170,6 +178,7 @@ export default function TeamWorkspacePage() {
       }
     } catch (err) {
       console.error(err);
+      setActionError(err.response?.data?.message || 'Failed to move the task. Please try again.');
     }
   };
 
@@ -177,6 +186,7 @@ export default function TeamWorkspacePage() {
   const handleCreateTask = async (e) => {
     e.preventDefault();
     if (!taskTitle) return;
+    setActionError(null);
 
     try {
       const res = await taskAPI.create({
@@ -206,6 +216,7 @@ export default function TeamWorkspacePage() {
       }
     } catch (err) {
       console.error(err);
+      setActionError(err.response?.data?.message || 'Failed to create the task. Please try again.');
     }
   };
 
@@ -213,6 +224,7 @@ export default function TeamWorkspacePage() {
   const handleAddComment = async (e) => {
     e.preventDefault();
     if (!commentText.trim() || !selectedTask) return;
+    setActionError(null);
 
     try {
       const res = await taskAPI.addComment(selectedTask._id, commentText);
@@ -223,6 +235,7 @@ export default function TeamWorkspacePage() {
       }
     } catch (err) {
       console.error(err);
+      setActionError(err.response?.data?.message || 'Failed to add the comment. Please try again.');
     }
   };
 
@@ -235,6 +248,7 @@ export default function TeamWorkspacePage() {
   const handleSendChat = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !selectedProject) return;
+    setActionError(null);
 
     try {
       const res = await collaborationAPI.sendMessage(selectedProject._id, chatInput);
@@ -244,6 +258,7 @@ export default function TeamWorkspacePage() {
       }
     } catch (err) {
       console.error(err);
+      setActionError(err.response?.data?.message || 'Failed to send the chat message. Please try again.');
     }
   };
 
@@ -290,6 +305,7 @@ export default function TeamWorkspacePage() {
         setDocuments(prev => prev.filter(d => d._id !== id));
       } catch (err) {
         console.error(err);
+        setActionError(err.response?.data?.message || 'Failed to delete the file. Please try again.');
       }
     }
   };
@@ -302,6 +318,7 @@ export default function TeamWorkspacePage() {
       if (res.data.success) setDocuments(res.data.data);
     } catch (err) {
       console.error(err);
+      setActionError(err.response?.data?.message || 'Failed to filter documents. Please try again.');
     }
   };
 
@@ -320,6 +337,16 @@ export default function TeamWorkspacePage() {
 
   return (
     <div className="fade-in-slide p-4">
+      {error && (
+        <Alert variant="danger" dismissible onClose={() => setError(null)} className="mb-4">
+          <strong>Notice:</strong> {error}
+        </Alert>
+      )}
+      {actionError && (
+        <Alert variant="warning" dismissible onClose={() => setActionError(null)} className="mb-4">
+          <strong>Notice:</strong> {actionError}
+        </Alert>
+      )}
       {/* Target Project Selection */}
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
@@ -443,7 +470,6 @@ export default function TeamWorkspacePage() {
                       placeholder="Discuss research design or task delegation..."
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
-                      disabled={chatLoading}
                     />
                     <Button type="submit" className="btn-glow-primary px-3" disabled={!chatInput.trim()}>
                       <Send size={16} />
@@ -523,7 +549,7 @@ export default function TeamWorkspacePage() {
                         <td><span className="small text-muted">{new Date(doc.createdAt).toLocaleDateString()}</span></td>
                         <td>
                           <div className="d-flex gap-2">
-                            <Button href={`${import.meta.env.VITE_SERVER_URL || 'http://localhost:5000'}${doc.fileUrl}`} target="_blank" size="sm" variant="outline-primary" className="d-flex align-items-center gap-1">
+                            <Button href={`${import.meta.env.VITE_SERVER_URL}${doc.fileUrl}`} target="_blank" size="sm" variant="outline-primary" className="d-flex align-items-center gap-1">
                               <Download size={12} />
                               <span>Download</span>
                             </Button>

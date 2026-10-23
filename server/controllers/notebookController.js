@@ -1,8 +1,8 @@
 import Document from '../models/Document.js';
 import Project from '../models/Project.js';
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { safeUnlink } from '../middleware/uploadMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,16 +24,16 @@ const resolveFileType = (filename) => {
 // @access  Private
 const uploadNotebookFile = async (req, res) => {
   const { projectId } = req.params;
-  const { title, category, tags } = req.body;
+  const { title, category, tags } = req.body || {};
+
+  if (!req.file || typeof req.file !== 'object' || !req.file.path) {
+    return res.status(400).json({ success: false, message: 'Please upload a file' });
+  }
 
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Please upload a file' });
-    }
-
     const project = await Project.findById(projectId);
     if (!project) {
-      fs.unlinkSync(req.file.path);
+      safeUnlink(req.file.path);
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
@@ -44,8 +44,9 @@ const uploadNotebookFile = async (req, res) => {
     if (tags) {
       try {
         tagsArray = JSON.parse(tags);
-      } catch (e) {
-        tagsArray = tags.split(',').map(tag => tag.trim());
+      } catch {
+        // Not JSON — treat as a comma-separated list of tags
+        tagsArray = String(tags).split(',').map(tag => tag.trim()).filter(Boolean);
       }
     }
 
@@ -57,7 +58,7 @@ const uploadNotebookFile = async (req, res) => {
       fileType,
       category: category || 'Notebook',
       uploadedBy: req.user._id,
-      fileSize: req.file.size,
+      fileSize: req.file.size || 0,
       tags: tagsArray,
     });
 
@@ -67,8 +68,8 @@ const uploadNotebookFile = async (req, res) => {
     res.status(201).json({ success: true, data: populatedDoc });
 
   } catch (error) {
-    if (req.file) {
-      fs.unlinkSync(req.file.path);
+    if (req.file?.path) {
+      safeUnlink(req.file.path);
     }
     res.status(500).json({ success: false, message: error.message });
   }
@@ -125,9 +126,7 @@ const deleteNotebookFile = async (req, res) => {
 
     // Try deleting physical file
     const filePath = path.join(__dirname, '..', document.fileUrl);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    safeUnlink(filePath);
 
     await document.deleteOne();
     res.json({ success: true, message: 'Document deleted successfully' });

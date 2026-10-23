@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { aiAPI } from '../services/api';
-import { MessageSquare, X, Send, User, Compass, HelpCircle } from 'lucide-react';
+import { MessageSquare, X, Send, User, Compass } from 'lucide-react';
 import { Button, Form, Spinner } from 'react-bootstrap';
 
 export default function ChatBot() {
@@ -43,8 +43,6 @@ export default function ChatBot() {
         setMessages((prev) => [...prev, {
           role: 'model',
           text: res.data.data,
-          source: res.data.source,
-          fallbackReason: res.data.fallbackReason || null,
         }]);
       }
     } catch (err) {
@@ -110,14 +108,16 @@ export default function ChatBot() {
                     {m.role === 'user' ? <User size={14} /> : <Compass size={14} className="text-primary" />}
                   </div>
                   <div className="flex-grow-1">
-                    <div className={`p-2.5 rounded-3 border ${m.role === 'user' ? 'bg-primary text-white border-primary' : 'bg-body border-light-subtle'}`} style={{ whiteSpace: 'pre-line' }}>
+                    <div className={`p-2.5 rounded-3 border ${
+                      m.role === 'user' 
+                        ? 'bg-primary text-white border-primary' 
+                        : m.isError 
+                        ? 'bg-danger-subtle text-danger border-danger-subtle' 
+                        : 'bg-body border-light-subtle'
+                    }`} style={{ whiteSpace: 'pre-line' }}>
+                      {m.isError && <strong>Error: </strong>}
                       {m.text}
                     </div>
-                    {m.source === 'local-fallback' && (
-                      <div className="text-warning mt-1" style={{ fontSize: '10.5px' }}>
-                        ⚠ Local fallback — Gemini unavailable{m.fallbackReason ? `: ${m.fallbackReason}` : ''}. Not a Gemini reply.
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

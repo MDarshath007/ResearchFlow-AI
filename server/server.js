@@ -56,10 +56,17 @@ app.get('/', (req, res) => {
   res.json({ message: 'Welcome to ResearchFlow AI API. Systems operational.' });
 });
 
+// JSON 404 for unknown API routes (before the error middleware)
+app.use('/api', (req, res) => {
+  res.status(404).json({ success: false, message: 'API route not found' });
+});
+
 // Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
+app.use((err, req, res, _next) => {
+  console.error(err.stack || err.message);
+  const isMulter = err.name === 'MulterError' || (typeof err.code === 'string' && err.code.startsWith('LIMIT_'));
+  const status = isMulter ? 400 : (err.status || err.statusCode || 500);
+  res.status(status).json({
     success: false,
     message: err.message || 'Server Error',
   });
@@ -72,7 +79,7 @@ const server = app.listen(PORT, () => {
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (err, promise) => {
+process.on('unhandledRejection', (err) => {
   console.log(`Error: ${err.message}`);
   // Close server & exit process
   server.close(() => process.exit(1));

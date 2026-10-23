@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
+import { safeUnlink } from '../middleware/uploadMiddleware.js';
 
 const getJwtSecret = () => {
   const secret = process.env.JWT_SECRET;
@@ -149,11 +150,11 @@ const verifyEmail = async (req, res) => {
 // @route   POST /api/auth/avatar
 // @access  Private
 const uploadAvatar = async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Please upload an image file' });
-    }
+  if (!req.file || typeof req.file !== 'object' || !req.file.path) {
+    return res.status(400).json({ success: false, message: 'Please upload an image file' });
+  }
 
+  try {
     const avatarPath = `/uploads/${req.file.filename}`;
     const user = await User.findByIdAndUpdate(
       req.user._id,
@@ -172,6 +173,9 @@ const uploadAvatar = async (req, res) => {
       },
     });
   } catch (error) {
+    if (req.file?.path) {
+      safeUnlink(req.file.path);
+    }
     res.status(500).json({ success: false, message: error.message });
   }
 };

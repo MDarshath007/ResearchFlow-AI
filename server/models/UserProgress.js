@@ -5,16 +5,19 @@ const userProgressSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'User reference is required'],
+      index: true,
     },
     module: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'LearningModule',
-      required: true,
+      required: [true, 'Learning module reference is required'],
+      index: true,
     },
     completed: {
       type: Boolean,
       default: false,
+      required: [true, 'Completion status is required'],
     },
     completedAt: {
       type: Date,
@@ -24,14 +27,16 @@ const userProgressSchema = new mongoose.Schema(
       // Latest quiz result (correct answers count). null = never attempted.
       type: Number,
       default: null,
+      min: [0, 'Quiz score cannot be negative'],
     },
     quizAttempts: {
       type: Number,
       default: 0,
+      min: [0, 'Quiz attempts cannot be negative'],
     },
   },
   {
-    timestamps: true, // provides createdAt + updatedAt
+    timestamps: true,
   }
 );
 

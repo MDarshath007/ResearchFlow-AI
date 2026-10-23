@@ -5,43 +5,58 @@ const documentSchema = new mongoose.Schema(
     project: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Project',
-      required: true,
+      required: [true, 'Document must be associated with a project'],
+      index: true,
     },
     title: {
       type: String,
       required: [true, 'Please add a document title'],
       trim: true,
+      default: 'Untitled Document',
     },
     fileName: {
       type: String,
-      required: true,
+      required: [true, 'Please specify the file name'],
+      trim: true,
     },
     fileUrl: {
       type: String,
-      required: true,
+      required: [true, 'Please provide the file URL'],
+      trim: true,
     },
     fileType: {
       type: String,
-      enum: ['PDF', 'DOCX', 'CSV', 'XLSX', 'Jupyter Notebook'],
-      required: true,
+      enum: {
+        values: ['PDF', 'DOCX', 'CSV', 'XLSX', 'Jupyter Notebook'],
+        message: '{VALUE} is not a supported file type',
+      },
+      required: [true, 'Please specify the file type'],
+      default: 'PDF',
     },
     category: {
       type: String,
-      enum: ['Notebook', 'Paper', 'Dataset'],
-      required: true,
+      enum: {
+        values: ['Notebook', 'Paper', 'Dataset', 'Report', 'Other'],
+        message: '{VALUE} is not a valid document category',
+      },
+      default: 'Notebook',
+      required: [true, 'Please specify the document category'],
     },
     uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'Uploader reference is required'],
     },
     fileSize: {
       type: Number,
-      required: true,
+      required: [true, 'File size in bytes is required'],
+      default: 0,
+      min: [0, 'File size cannot be negative'],
     },
     tags: [
       {
         type: String,
+        trim: true,
       },
     ],
   },
@@ -51,4 +66,3 @@ const documentSchema = new mongoose.Schema(
 );
 
 export default mongoose.model('Document', documentSchema);
-

@@ -28,7 +28,7 @@ const formatResetTime = (resetEpochSeconds) => {
   if (!resetEpochSeconds) return null;
   try {
     return new Date(Number(resetEpochSeconds) * 1000).toISOString();
-  } catch (e) {
+  } catch {
     return null;
   }
 };
@@ -38,7 +38,7 @@ const ghFetch = async (path) => {
   let res;
   try {
     res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders() });
-  } catch (err) {
+  } catch {
     throw new GithubApiError(502, 'Could not reach the GitHub API. Check your network connection and try again.');
   }
 

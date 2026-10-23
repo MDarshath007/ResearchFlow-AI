@@ -3,12 +3,12 @@ import { useLocation } from 'react-router-dom';
 import { projectAPI, assessmentAPI, aiAPI, reproducibilityAPI } from '../services/api';
 import MaturityBadge from '../components/MaturityBadge';
 import { 
-  ShieldCheck, FileCode, CheckSquare, Upload, HelpCircle, 
-  Terminal, Sparkles, Download, FileText, ChevronRight, AlertTriangle, RefreshCw 
+  ShieldCheck, 
+  Terminal, Sparkles, Download, FileText, AlertTriangle, RefreshCw 
 } from 'lucide-react';
-import { Container, Row, Col, Card, Button, Form, Spinner, Alert, Tabs, Tab, ProgressBar, Badge } from 'react-bootstrap';
+import { Row, Col, Card, Button, Form, Spinner, Alert, Tabs, Tab, Badge } from 'react-bootstrap';
 import { Chart as ChartJS, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
-import { Radar, Bar } from 'react-chartjs-2';
+import { Radar } from 'react-chartjs-2';
 
 ChartJS.register(
   RadialLinearScale,
@@ -26,6 +26,7 @@ export default function AssessmentReports() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [scanLoading, setScanLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('assessment');
 
@@ -41,8 +42,6 @@ export default function AssessmentReports() {
   const [docType, setDocType] = useState('readme');
   const [docText, setDocText] = useState('');
   const [docLoading, setDocLoading] = useState(false);
-  const [docSource, setDocSource] = useState(null); // 'gemini' | 'local-fallback'
-  const [docFallbackReason, setDocFallbackReason] = useState(null);
   const [docError, setDocError] = useState(null);
 
   const location = useLocation();
@@ -67,6 +66,7 @@ export default function AssessmentReports() {
       }
     } catch (err) {
       console.error(err);
+      setLoadError(err.response?.data?.message || 'Failed to load reports for this project.');
     }
   };
 
@@ -96,6 +96,7 @@ export default function AssessmentReports() {
         }
       } catch (err) {
         console.error(err);
+        setLoadError(err.response?.data?.message || 'Failed to load projects and reports.');
       } finally {
         setLoading(false);
       }
@@ -122,7 +123,7 @@ export default function AssessmentReports() {
         formData.append('codebase', codebaseFile);
         res = await assessmentAPI.scan(selectedProject._id, formData);
       } else {
-        res = await assessmentAPI.scanSimulated(selectedProject._id);
+        res = await assessmentAPI.scan(selectedProject._id);
       }
 
       if (res.data.success) {
@@ -146,15 +147,11 @@ export default function AssessmentReports() {
     if (!selectedProject) return;
     setDocLoading(true);
     setDocText('');
-    setDocSource(null);
-    setDocFallbackReason(null);
     setDocError(null);
     try {
       const res = await aiAPI.generateDoc(selectedProject._id, { docType });
       if (res.data.success) {
         setDocText(res.data.data);
-        setDocSource(res.data.source || null);
-        setDocFallbackReason(res.data.fallbackReason || null);
       }
     } catch (err) {
       console.error(err);
@@ -190,6 +187,7 @@ export default function AssessmentReports() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
+      setDocError(err.response?.data?.message || 'PDF export failed. Please try again.');
     }
   };
 
@@ -208,7 +206,7 @@ export default function AssessmentReports() {
         });
         res = await reproducibilityAPI.check(selectedProject._id, formData);
       } else {
-        res = await reproducibilityAPI.checkSimulated(selectedProject._id);
+        res = await reproducibilityAPI.check(selectedProject._id);
       }
 
       if (res.data.success) {
@@ -255,6 +253,11 @@ export default function AssessmentReports() {
 
   return (
     <div className="fade-in-slide p-4 workspace-page assessment-page">
+      {loadError && (
+        <Alert variant="danger" className="mb-3" onClose={() => setLoadError(null)} dismissible>
+          {loadError}
+        </Alert>
+      )}
       {/* Target Project Selection */}
       <div className="page-heading d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
@@ -438,11 +441,6 @@ export default function AssessmentReports() {
                   {docError && (
                     <Alert variant="danger" className="py-2 small mb-3">
                       {docError}
-                    </Alert>
-                  )}
-                  {docSource === 'local-fallback' && docText && (
-                    <Alert variant="warning" className="py-2 small mb-3">
-                      Generated from local templates — Gemini unavailable{docFallbackReason ? ` (${docFallbackReason})` : ''}. This document was not written by Gemini.
                     </Alert>
                   )}
                   {docLoading ? (

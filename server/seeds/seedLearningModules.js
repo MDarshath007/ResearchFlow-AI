@@ -12,11 +12,10 @@ import learningModules from './learningContent.js';
 
 dotenv.config();
 
-const run = async () => {
+export const seedLearningModules = async () => {
   await connectDB();
   if (mongoose.connection.readyState !== 1) {
-    console.error('Seed aborted: could not connect to MongoDB.');
-    process.exit(1);
+    throw new Error('Seed aborted: could not connect to MongoDB.');
   }
 
   let created = 0;
@@ -36,12 +35,22 @@ const run = async () => {
 
   const total = await LearningModule.countDocuments({ slug: { $in: learningModules.map((m) => m.slug) } });
   console.log(`Learning modules seed complete: ${created} created, ${updated} updated, ${total} total in DB.`);
+  return { created, updated, total };
+};
 
+const run = async () => {
+  await seedLearningModules();
   await mongoose.disconnect();
   process.exit(0);
 };
 
-run().catch((err) => {
-  console.error(`Seed failed: ${err.message}`);
-  process.exit(1);
-});
+// Execute when invoked directly from CLI
+if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('seeds/seedLearningModules.js')) {
+  run().catch((err) => {
+    console.error(`Seed failed: ${err.message}`);
+    process.exit(1);
+  });
+}
+
+export { learningModules };
+export default seedLearningModules;

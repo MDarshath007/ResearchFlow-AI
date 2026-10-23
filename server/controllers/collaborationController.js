@@ -1,6 +1,5 @@
 import Message from '../models/Message.js';
 import Notification from '../models/Notification.js';
-import Project from '../models/Project.js';
 import Task from '../models/Task.js';
 import Document from '../models/Document.js';
 import Report from '../models/Report.js';

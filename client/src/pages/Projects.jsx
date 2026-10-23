@@ -1,12 +1,16 @@
+// react-hooks/exhaustive-deps: the mount/URL-change effects below intentionally call
+// component-scoped fetch helpers that are recreated each render; listing them as
+// dependencies would cause refetch loops. Data fetching is keyed on [location.search].
+/* oxlint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { projectAPI, githubAPI } from '../services/api';
 import MaturityBadge from '../components/MaturityBadge';
 import { 
-  FolderKanban, GitBranch, Users, Goal, Calendar, Plus, 
-  Trash2, Edit, ChevronRight, Link2, ExternalLink, RefreshCw 
+  FolderKanban, GitBranch, Users, Goal, Plus, 
+  Trash2, ChevronRight, Link2, ExternalLink 
 } from 'lucide-react';
-import { Container, Row, Col, Card, Button, Badge, Modal, Form, Spinner, ListGroup } from 'react-bootstrap';
+import { Row, Col, Card, Button, Badge, Modal, Form, Spinner, ListGroup, Alert } from 'react-bootstrap';
 import UserAvatar from '../components/UserAvatar';
 
 
@@ -14,6 +18,7 @@ export default function Projects() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [repoLoading, setRepoLoading] = useState(false);
   const [gitDetails, setGitDetails] = useState(null);
   const [repoError, setRepoError] = useState('');
@@ -36,7 +41,27 @@ export default function Projects() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const fetchGitRepo = async (project) => {
+    setGitDetails(null);
+    setRepoError('');
+
+    if (!project?._id || !project.repositoryUrl) {
+      return;
+    }
+
+    try {
+      const res = await githubAPI.getDetails(project._id);
+      if (res.data.success) {
+        setGitDetails(res.data.data);
+      }
+    } catch {
+      // Ignore if no repo connected
+    }
+  };
+
   const fetchProjects = async (selectId = null) => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await projectAPI.getAll();
       if (res.data.success) {
@@ -59,32 +84,18 @@ export default function Projects() {
       }
     } catch (err) {
       console.error(err);
+      setError(err.response?.data?.message || 'Failed to fetch projects. Please verify backend API connectivity.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    // Fetch on mount / URL change. fetchProjects is recreated every render by
+    // design (captures fresh state); adding it to deps would cause a loop.
+    // oxlint-disable-next-line react/set-state-in-effect
     fetchProjects();
   }, [location.search]);
-
-  const fetchGitRepo = async (project) => {
-    setGitDetails(null);
-    setRepoError('');
-
-    if (!project?._id || !project.repositoryUrl) {
-      return;
-    }
-
-    try {
-      const res = await githubAPI.getDetails(project._id);
-      if (res.data.success) {
-        setGitDetails(res.data.data);
-      }
-    } catch (err) {
-      // Ignore if no repo connected
-    }
-  };
 
   const handleSelectProject = (project) => {
     setSelectedProject(project);
@@ -130,6 +141,7 @@ export default function Projects() {
       }
     } catch (err) {
       console.error(err);
+      setError(err.response?.data?.message || 'Failed to create the project. Please try again.');
     }
   };
 
@@ -184,6 +196,7 @@ export default function Projects() {
         fetchProjects();
       } catch (err) {
         console.error(err);
+        setError(err.response?.data?.message || 'Failed to delete the project. Please try again.');
       }
     }
   };
@@ -198,6 +211,12 @@ export default function Projects() {
 
   return (
     <div className="fade-in-slide p-4 workspace-page projects-page">
+      {error && (
+        <Alert variant="danger" dismissible onClose={() => setError(null)} className="d-flex justify-content-between align-items-center mb-4">
+          <div><strong>Notice:</strong> {error}</div>
+          <Button size="sm" variant="outline-danger" onClick={() => fetchProjects()}>Retry</Button>
+        </Alert>
+      )}
       <Row className="g-4">
         {/* Left Side: Projects Directory list */}
         <Col lg={4}>
