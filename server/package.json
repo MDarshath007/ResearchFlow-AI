@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "seed": "node seeds/seedLearningModules.js"
+    "seed": "node seeds/seedLearningModules.js",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --detectOpenHandles"
   },
   "dependencies": {
     "@google/generative-ai": "^0.11.4",
@@ -20,5 +21,12 @@
     "mongoose": "^8.3.1",
     "multer": "^1.4.5-lts.1",
     "pdfkit": "^0.15.0"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.5.2",
+    "cross-env": "^10.1.0",
+    "jest": "^30.5.2",
+    "jest-circus": "^30.5.2",
+    "supertest": "^7.3.1"
   }
 }

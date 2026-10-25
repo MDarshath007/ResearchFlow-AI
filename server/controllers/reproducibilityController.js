@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import AdmZip from 'adm-zip';
 import Project from '../models/Project.js';
 import Report from '../models/Report.js';
 import { safeUnlink } from '../middleware/uploadMiddleware.js';
@@ -259,6 +260,19 @@ const checkReproducibility = async (req, res) => {
   const rawFiles = Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []);
   const files = rawFiles.filter((f) => f && typeof f === 'object' && f.path && typeof f.path === 'string');
 
+  if (files.length === 0) {
+    rawFiles.forEach((file) => {
+      if (file && typeof file.path === 'string') safeUnlink(file.path);
+    });
+    return res.status(400).json({
+      success: false,
+      score: 0,
+      readinessRating: 'Low',
+      status: 'Failed',
+      message: 'No files were uploaded. Please attach project files or manifests to run a Reproducibility Audit.',
+    });
+  }
+
   try {
     const project = await Project.findById(projectId);
     if (!project) {
@@ -270,6 +284,7 @@ const checkReproducibility = async (req, res) => {
       dockerFilePresent: false,
       packageJsonPresent: false,
       requirementsTxtPresent: false,
+      environmentYamlPresent: false,
       envExamplePresent: false,
       unversionedDependencies: [],
       missingEnvDeclarations: [],
@@ -289,15 +304,57 @@ const checkReproducibility = async (req, res) => {
     const recommendations = reportDetails.recommendations;
     const addCheck = (id, label, status, detail) => checks.push({ id, label, status, detail });
 
+    // Start at 100 and deduct for missing or invalid reproducibility evidence.
     let score = 100;
 
-    if (files.length === 0) {
-      // Never fabricate an audit — there must be real files to analyse.
-      return res.status(400).json({
-        success: false,
-        message: 'No files to audit. Upload project files (requirements.txt, package.json, Dockerfile, .env, or .ipynb notebooks) to run a reproducibility check.',
-      });
-    }
+    const auditFiles = [];
+    const MAX_ARCHIVE_ENTRIES = 1000;
+    const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
+
+    files.forEach((file) => {
+      if (path.extname(file.originalname).toLowerCase() !== '.zip') {
+        auditFiles.push({ originalname: file.originalname, path: file.path });
+        return;
+      }
+
+      try {
+        const archive = new AdmZip(fs.readFileSync(file.path));
+        const entries = archive.getEntries().filter((entry) => !entry.isDirectory);
+        if (entries.length > MAX_ARCHIVE_ENTRIES) {
+          warnings.push(`Archive "${file.originalname}" contains more than ${MAX_ARCHIVE_ENTRIES} files; remaining entries were skipped.`);
+        }
+
+        let expandedBytes = 0;
+        entries.slice(0, MAX_ARCHIVE_ENTRIES).forEach((entry) => {
+          const entryName = String(entry.entryName).replace(/\\/g, '/');
+          if (entryName.startsWith('/') || /^[a-z]:\//i.test(entryName) || entryName.split('/').includes('..')) {
+            warnings.push(`Archive entry "${entryName}" was skipped because its path is unsafe.`);
+            return;
+          }
+
+          const entrySize = Number(entry.header.size) || 0;
+          if (entrySize > MAX_ARCHIVE_UNCOMPRESSED_BYTES - expandedBytes) {
+            warnings.push(`Archive entry "${entryName}" was skipped because the archive exceeds the uncompressed size limit.`);
+            return;
+          }
+
+          try {
+            const content = entry.getData();
+            if (content.length > MAX_ARCHIVE_UNCOMPRESSED_BYTES - expandedBytes) {
+              warnings.push(`Archive entry "${entryName}" was skipped because the archive exceeds the uncompressed size limit.`);
+              return;
+            }
+            expandedBytes += content.length;
+            auditFiles.push({ originalname: entryName, content: content.toString('utf8') });
+          } catch (error) {
+            warnings.push(`Archive entry "${entryName}" could not be read (${error.message}).`);
+          }
+        });
+      } catch (error) {
+        warnings.push(`Archive "${file.originalname}" could not be parsed (${error.message}).`);
+        recommendations.push('Upload a valid ZIP archive containing readable project files.');
+      }
+    });
 
     // -----------------------------------------------------------------------
     // Pass 1 — read & classify uploaded files (existing config checks kept)
@@ -306,6 +363,9 @@ const checkReproducibility = async (req, res) => {
     const declaredPackages = new Set();
     const uploadedSourceNames = new Set();
     const envFileKeys = new Set();
+    let manuscriptUploaded = false;
+    let sourceCodeUploaded = false;
+    let datasetUploaded = false;
 
     const BINARY_OR_PDF_EXTS = new Set([
       '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.zip', '.tar', '.gz',
@@ -313,22 +373,61 @@ const checkReproducibility = async (req, res) => {
       '.doc', '.docx', '.xls', '.xlsx'
     ]);
 
-    files.forEach((file) => {
-      const filename = file.originalname.toLowerCase();
+    // Short ordinary text files are not useful audit evidence; manifests are
+    // validated by their individual parsers and checks instead.
+    const MIN_CONTENT_LENGTH = 20;
+
+    auditFiles.forEach((file) => {
+      const filename = file.originalname.toLowerCase().replace(/\\/g, '/');
+      const basename = filename.split('/').pop() || filename;
       const ext = path.extname(filename).toLowerCase();
+      const isDockerfile = basename.startsWith('dockerfile');
+      const isPackageManifest = basename === 'package.json';
+      const isRequirementsManifest = basename === 'requirements.txt';
+      const isEnvironmentYaml = basename === 'environment.yml' || basename === 'environment.yaml';
+      const isEnvFile = basename === '.env' || basename.startsWith('.env.');
+      const isCoreManifest = isDockerfile || isPackageManifest || isRequirementsManifest || isEnvironmentYaml || isEnvFile;
+
+      if (isDockerfile) reportDetails.dockerFilePresent = true;
+      if (isPackageManifest) reportDetails.packageJsonPresent = true;
+      if (isRequirementsManifest) reportDetails.requirementsTxtPresent = true;
+      if (isEnvironmentYaml) reportDetails.environmentYamlPresent = true;
+      if (isEnvFile) reportDetails.envExamplePresent = true;
 
       // Safely skip binary and PDF files from text/manifest inspection
-      if (BINARY_OR_PDF_EXTS.has(ext)) {
+      if (BINARY_OR_PDF_EXTS.has(ext) && !isCoreManifest) {
         warnings.push(`File "${file.originalname}" is a binary/PDF file and was skipped from text-based reproducibility auditing.`);
         return;
       }
 
       let content;
       try {
-        content = fs.readFileSync(file.path, 'utf8');
+        content = typeof file.content === 'string' ? file.content : fs.readFileSync(file.path, 'utf8');
       } catch (readErr) {
         warnings.push(`File ${file.originalname} could not be read and was skipped (${readErr.message}).`);
         return;
+      }
+
+      // Guard: reject empty or near-empty files that cannot be meaningfully analysed
+      if (!content || content.trim().length === 0 || (!isCoreManifest && content.trim().length < MIN_CONTENT_LENGTH)) {
+        warnings.push(`File "${file.originalname}" has no readable content (empty or below minimum threshold) and was skipped.`);
+        if (isCoreManifest) {
+          addCheck('manifest-content', `Readable runtime manifest (${basename})`, 'failed', 'Manifest is empty or has no readable content');
+          recommendations.push(`Provide readable content in ${basename}.`);
+          score -= 15;
+        }
+        return;
+      }
+
+      // File has passed all validation gates — count it as a real contribution
+      if (filename.includes('manuscript') || filename.includes('paper')) {
+        manuscriptUploaded = true;
+      }
+      if (/\.(py|js|jsx|ts|tsx|java|go|rs|r|jl|m|scala|kt|php|rb|cs|sh|sql|ipynb)$/.test(filename)) {
+        sourceCodeUploaded = true;
+      }
+      if (/\.(csv|tsv|xls|xlsx|parquet|npy|npz|feather|arrow|sav|dta)$/.test(filename)) {
+        datasetUploaded = true;
       }
 
       // --- Jupyter notebook: analysed in pass 2 (needs manifest info first)
@@ -341,8 +440,7 @@ const checkReproducibility = async (req, res) => {
         uploadedSourceNames.add(filename.replace(/\.py$/, '').split('/').pop());
       }
 
-      else if (filename.includes('dockerfile')) {
-        reportDetails.dockerFilePresent = true;
+      else if (isDockerfile) {
         const missingDirectives = [];
         if (!content.includes('FROM')) missingDirectives.push('FROM base image');
         if (!content.includes('WORKDIR')) missingDirectives.push('WORKDIR');
@@ -363,8 +461,7 @@ const checkReproducibility = async (req, res) => {
         );
       }
 
-      else if (filename.includes('package.json')) {
-        reportDetails.packageJsonPresent = true;
+      else if (isPackageManifest) {
         let pkgUnpinned = 0;
         let corrupt = false;
         try {
@@ -398,8 +495,7 @@ const checkReproducibility = async (req, res) => {
         );
       }
 
-      else if (filename.includes('requirements.txt')) {
-        reportDetails.requirementsTxtPresent = true;
+      else if (isRequirementsManifest) {
         let reqUnpinned = 0;
         const lines = content.split('\n');
 
@@ -433,8 +529,11 @@ const checkReproducibility = async (req, res) => {
         );
       }
 
-      else if (filename.includes('.env')) {
-        reportDetails.envExamplePresent = true;
+      else if (isEnvironmentYaml) {
+        addCheck('environment-yaml', 'environment.yml dependency manifest', 'passed', 'Environment dependency manifest detected');
+      }
+
+      else if (isEnvFile) {
         let exposed = 0;
         const lines = content.split('\n');
         lines.forEach(line => {
@@ -458,7 +557,51 @@ const checkReproducibility = async (req, res) => {
       }
     });
 
-    // Skipped checks for config types not included in the audit inputs
+    const dependencyManifestPresent =
+      reportDetails.packageJsonPresent ||
+      reportDetails.requirementsTxtPresent ||
+      reportDetails.environmentYamlPresent;
+    const missingManifests = [
+      {
+        id: 'missing-dockerfile',
+        missing: !reportDetails.dockerFilePresent,
+        label: 'Dockerfile',
+        deduction: 35,
+      },
+      {
+        id: 'missing-dependencies',
+        missing: !dependencyManifestPresent,
+        label: 'Dependency manifest (requirements.txt, package.json, or environment.yml)',
+        deduction: 35,
+      },
+      {
+        id: 'missing-environment',
+        missing: !reportDetails.envExamplePresent,
+        label: 'Environment file (.env or .env.example)',
+        deduction: 30,
+      },
+    ];
+    missingManifests.forEach(({ id, missing, label, deduction }) => {
+      if (!missing) return;
+      score -= deduction;
+      recommendations.push(`Upload the missing ${label}.`);
+      addCheck(id, label, 'failed', `Missing required reproducibility artifact (-${deduction} points)`);
+    });
+
+    const manifestGateFailed = !(
+      reportDetails.dockerFilePresent ||
+      dependencyManifestPresent ||
+      reportDetails.envExamplePresent
+    );
+    if (manifestGateFailed) {
+      const message = 'No reproducible runtime manifests (Dockerfile, requirements.txt, package.json, or .env) were detected in the upload.';
+      score = 0;
+      warnings.push(message);
+      recommendations.push('Upload at least one reproducible runtime manifest before running this audit.');
+      addCheck('runtime-manifests', message, 'failed', message);
+    }
+
+    // Skipped checks for config types not included in the audited inputs
     if (!reportDetails.dockerFilePresent) {
       addCheck('dockerfile', 'Dockerfile checks', 'skipped', 'No Dockerfile included in the audited files');
     }
@@ -470,6 +613,21 @@ const checkReproducibility = async (req, res) => {
     }
     if (!reportDetails.envExamplePresent) {
       addCheck('env-file', 'Environment file checks', 'skipped', 'No .env/.env.example included in the audited files');
+    }
+
+    if (manuscriptUploaded && !sourceCodeUploaded) {
+      const detail = 'No analysis source code was uploaded alongside the manuscript.';
+      warnings.push(detail);
+      recommendations.push('Upload the source code used to produce the reported results.');
+      addCheck('research-source', 'Research analysis source code', 'warning', detail);
+      score -= 25;
+    }
+    if (manuscriptUploaded && !datasetUploaded) {
+      const detail = 'No research dataset was uploaded alongside the manuscript.';
+      warnings.push(detail);
+      recommendations.push('Upload the dataset used to produce the reported results, or document its access location.');
+      addCheck('research-dataset', 'Research dataset', 'warning', detail);
+      score -= 25;
     }
 
     // -----------------------------------------------------------------------
@@ -621,12 +779,13 @@ const checkReproducibility = async (req, res) => {
       }
     });
 
-    // Baseline minimum
-    score = Math.max(score, 10);
+    // Clamp score between 0 and 100 — no artificial minimum floor that would
+    // inflate scores for projects with nothing meaningful to audit.
+    score = Math.max(score, 0);
 
-    let rating = 'Medium';
-    if (score >= 85) rating = 'High';
-    else if (score < 50) rating = 'Low';
+    let rating = 'Low';
+    if (score >= 70) rating = 'High';
+    else if (score >= 40) rating = 'Medium';
 
     // Structured outputs (checks performed / passed / failed / warnings / recommendations)
     reportDetails.passedChecks = checks.filter((c) => c.status === 'passed').map((c) => c.label);
@@ -637,16 +796,19 @@ const checkReproducibility = async (req, res) => {
       project: projectId,
       type: 'Reproducibility',
       overallScore: score,
+      ...(manifestGateFailed ? { status: 'Failed' } : {}),
       reproducibilityReport: {
         dockerFilePresent: reportDetails.dockerFilePresent,
         packageJsonPresent: reportDetails.packageJsonPresent,
         requirementsTxtPresent: reportDetails.requirementsTxtPresent,
+        environmentYamlPresent: reportDetails.environmentYamlPresent,
         envExamplePresent: reportDetails.envExamplePresent,
         unversionedDependencies: reportDetails.unversionedDependencies,
         missingEnvDeclarations: reportDetails.missingEnvDeclarations,
         conflictingVersions: reportDetails.conflictingVersions,
         suggestions: reportDetails.suggestions,
         readinessRating: rating,
+        ...(manifestGateFailed ? { status: 'Failed' } : {}),
         checks: reportDetails.checks,
         passedChecks: reportDetails.passedChecks,
         failedChecks: reportDetails.failedChecks,
@@ -659,10 +821,17 @@ const checkReproducibility = async (req, res) => {
     res.json({
       success: true,
       message: 'Reproducibility check completed successfully',
+      ...(manifestGateFailed ? { status: 'Failed' } : {}),
       data: report,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    // Always return an error status — never fall through to a mock success object.
+    res.status(500).json({
+      success: false,
+      score: 0,
+      status: 'Error',
+      message: error.message || 'An unexpected error occurred during the reproducibility check.',
+    });
   } finally {
     files.forEach((f) => safeUnlink(f.path));
   }

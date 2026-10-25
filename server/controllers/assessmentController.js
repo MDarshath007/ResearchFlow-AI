@@ -95,6 +95,19 @@ const buildZipEvidence = (zipPath) => {
   const entryPath = (e) => String(e.entryName).replace(/\\/g, '/');
   const entries = zip.getEntries().filter((e) => !e.isDirectory);
   const files = entries.map(entryPath).filter((p) => !shouldSkip(p));
+  const hasAssessmentEvidence = files.some((file) =>
+    isReadme(file) ||
+    isDocFile(file) ||
+    isTestFile(file) ||
+    isSourceFile(file) ||
+    isDependencyFile(file) ||
+    isReproFile(file) ||
+    isCiFile(file) ||
+    isLicenseFile(file) ||
+    isContributingFile(file)
+  );
+
+  if (!hasAssessmentEvidence) return null;
 
   const readmeEntry =
     entries.find((e) => baseName(entryPath(e)).toLowerCase() === 'readme.md') ||
@@ -526,9 +539,22 @@ const scanProjectCodebase = async (req, res) => {
     if (!zipEvidence && !githubEvidence) {
       return res.status(400).json({
         success: false,
+        score: 0,
+        status: 'Failed',
+        reason: 'Unparseable or empty file content.',
         message: zipError
           ? `The uploaded ZIP could not be parsed (${zipError}). Connect a GitHub repository or upload a valid ZIP archive.`
           : 'No assessment evidence available. Connect a public GitHub repository or upload a project ZIP archive to run the assessment.',
+        breakdown: {
+          documentation: 0,
+          testing: 0,
+          git: 0,
+          collaboration: 0,
+        },
+        recommendations: [
+          'Upload a valid ZIP archive of your project source code, or connect a public GitHub repository.',
+          'Ensure the archive is not empty and contains readable source files (not only binary assets).',
+        ],
       });
     }
 
@@ -665,7 +691,14 @@ const scanProjectCodebase = async (req, res) => {
     });
   } catch (error) {
     if (zipPath) safeUnlink(zipPath);
-    res.status(500).json({ success: false, message: error.message });
+    // Always return a clear error status — never implicitly fall through to
+    // a success object or a score that was never calculated from real evidence.
+    res.status(500).json({
+      success: false,
+      score: 0,
+      status: 'Error',
+      message: error.message || 'An unexpected error occurred during the assessment.',
+    });
   }
 };
 

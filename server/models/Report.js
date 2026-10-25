@@ -46,6 +46,9 @@ const reportSchema = new mongoose.Schema(
       min: [0, 'Score cannot be negative'],
       max: [100, 'Score cannot exceed 100'],
     },
+    status: {
+      type: String,
+    },
     details: {
       type: mongoose.Schema.Types.Mixed,
       default: () => ({}),

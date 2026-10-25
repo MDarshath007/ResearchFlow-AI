@@ -30,6 +30,7 @@ export default function AnalyticsPage() {
 
   const fetchAnalyticsData = async (project) => {
     if (!project) return;
+    setAnalytics(null);
     try {
       const res = await analyticsAPI.getProject(project._id);
       if (res.data.success) {
@@ -43,6 +44,8 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     const initData = async () => {
+      setAnalytics(null);
+      setSelectedProject(null);
       try {
         const projRes = await projectAPI.getAll();
         if (projRes.data.success) {
@@ -84,6 +87,7 @@ export default function AnalyticsPage() {
 
   const handleSelectProject = async (p) => {
     setSelectedProject(p);
+    setAnalytics(null);
     await fetchAnalyticsData(p);
   };
 
@@ -301,7 +305,11 @@ export default function AnalyticsPage() {
           </Row>
         </>
       ) : (
-        <div className="text-center py-5 text-muted glass-card mb-4">Initialize code scans to generate analytics charts.</div>
+        <div className="text-center py-5 text-muted glass-card mb-4">
+          {selectedProject
+            ? 'No project files uploaded yet. Upload your research artifacts to run the audit.'
+            : 'Initialize code scans to generate analytics charts.'}
+        </div>
       )}
 
       {/* Leaderboard Row */}

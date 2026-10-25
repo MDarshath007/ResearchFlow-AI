@@ -33,10 +33,13 @@ export default function AssessmentReports() {
   // Reports data
   const [assessmentReport, setAssessmentReport] = useState(null);
   const [reproReport, setReproReport] = useState(null);
+  const [assessmentFailure, setAssessmentFailure] = useState(null);
+  const [reproFailure, setReproFailure] = useState(null);
 
   // Uploader states
   const [codebaseFile, setCodebaseFile] = useState(null);
   const [reproFiles, setReproFiles] = useState([]);
+  const [reproFileInputKey, setReproFileInputKey] = useState(0);
 
   // AI Doc Generator states
   const [docType, setDocType] = useState('readme');
@@ -48,6 +51,8 @@ export default function AssessmentReports() {
 
   const fetchReportsData = async (project) => {
     if (!project) return;
+    setAssessmentReport(null);
+    setReproReport(null);
     try {
       // Fetch assessment reports
       const assessRes = await assessmentAPI.getByProject(project._id);
@@ -57,13 +62,6 @@ export default function AssessmentReports() {
         setAssessmentReport(null);
       }
 
-      // Fetch reproducibility reports
-      const reproRes = await reproducibilityAPI.getByProject(project._id);
-      if (reproRes.data.success && reproRes.data.data.length > 0) {
-        setReproReport(reproRes.data.data[0]); // latest report
-      } else {
-        setReproReport(null);
-      }
     } catch (err) {
       console.error(err);
       setLoadError(err.response?.data?.message || 'Failed to load reports for this project.');
@@ -72,6 +70,13 @@ export default function AssessmentReports() {
 
   useEffect(() => {
     const initData = async () => {
+      setSelectedProject(null);
+      setAssessmentReport(null);
+      setReproReport(null);
+      setAssessmentFailure(null);
+      setReproFailure(null);
+      setReproFiles([]);
+      setReproFileInputKey((key) => key + 1);
       try {
         const res = await projectAPI.getAll();
         if (res.data.success) {
@@ -107,7 +112,21 @@ export default function AssessmentReports() {
 
   const handleSelectProject = async (p) => {
     setSelectedProject(p);
+    setAssessmentFailure(null);
+    setReproFailure(null);
+    setReproFiles([]);
+    setReproFileInputKey((key) => key + 1);
     await fetchReportsData(p);
+  };
+
+  const handleTabSelect = (tab) => {
+    setActiveTab(tab);
+    if (tab !== 'repro') {
+      setReproReport(null);
+      setReproFailure(null);
+      setReproFiles([]);
+      setReproFileInputKey((key) => key + 1);
+    }
   };
 
   // Assessment scan trigger
@@ -116,6 +135,8 @@ export default function AssessmentReports() {
     if (!selectedProject) return;
 
     setScanLoading(true);
+    setAssessmentReport(null);
+    setAssessmentFailure(null);
     try {
       let res;
       if (codebaseFile) {
@@ -136,6 +157,9 @@ export default function AssessmentReports() {
       }
     } catch (err) {
       console.error(err);
+      if (err.response?.data?.status === 'Failed') {
+        setAssessmentFailure(err.response.data);
+      }
       alert(err.response?.data?.message || 'Scanning failed. Make sure ZIP file format is valid.');
     } finally {
       setScanLoading(false);
@@ -197,6 +221,8 @@ export default function AssessmentReports() {
     if (!selectedProject) return;
 
     setScanLoading(true);
+    setReproReport(null);
+    setReproFailure(null);
     try {
       let res;
       if (reproFiles.length > 0) {
@@ -215,6 +241,9 @@ export default function AssessmentReports() {
       }
     } catch (err) {
       console.error(err);
+      if (err.response?.data?.status === 'Failed') {
+        setReproFailure(err.response.data);
+      }
       alert(err.response?.data?.message || 'Reproducibility audit failed. Select valid project files and try again.');
     } finally {
       setScanLoading(false);
@@ -279,7 +308,7 @@ export default function AssessmentReports() {
       </div>
 
       {selectedProject ? (
-        <Tabs activeKey={activeTab} onSelect={(k) => setActiveTab(k)} className="mb-4 rse-tabs border-bottom">
+        <Tabs activeKey={activeTab} onSelect={handleTabSelect} className="mb-4 rse-tabs border-bottom">
           {/* TAB 1: SE Quality Assessment */}
           <Tab eventKey="assessment" title="Quality Assessment">
             <Row className="g-4">
@@ -400,6 +429,14 @@ export default function AssessmentReports() {
                         </div>
                       )}
                     </div>
+                  ) : assessmentFailure ? (
+                    <div className="d-flex justify-content-between align-items-center rounded border border-danger-subtle bg-danger-subtle p-3">
+                      <div>
+                        <div className="fw-semibold text-danger">Assessment failed</div>
+                        <div className="text-danger">{assessmentFailure.score ?? 0}%</div>
+                      </div>
+                      <MaturityBadge score={assessmentFailure.score} status={assessmentFailure.status} />
+                    </div>
                   ) : (
                     <div className="text-center py-5 text-muted">No assessment reports found. Trigger a scan above to calculate quality scores.</div>
                   )}
@@ -499,9 +536,14 @@ export default function AssessmentReports() {
                     <Form.Group className="mb-4" controlId="reproFilesInput">
                       <Form.Label className="small fw-semibold">Select Configuration Files (Optional)</Form.Label>
                       <Form.Control 
+                        key={reproFileInputKey}
                         type="file" 
                         multiple
-                        onChange={(e) => setReproFiles(e.target.files)}
+                        onChange={(e) => {
+                          setReproFiles(Array.from(e.target.files || []));
+                          setReproReport(null);
+                          setReproFailure(null);
+                        }}
                       />
                       <Form.Text className="text-muted small">Select multiple files together (requirements.txt, Dockerfile, .env, or .ipynb notebooks).</Form.Text>
                     </Form.Group>
@@ -549,9 +591,9 @@ export default function AssessmentReports() {
                         <div className="mt-3">
                           <div className="fw-semibold small text-muted mb-2">
                             Checks performed ({reproReport.reproducibilityReport.checks.length}) · {' '}
-                            <span className="text-success">{reproReport.reproducibilityReport.passedChecks?.length || 0} passed</span>
+                            <span className="text-success">{reproReport.reproducibilityReport.passedChecks?.length ?? 0} passed</span>
                             {' · '}
-                            <span className="text-danger">{reproReport.reproducibilityReport.failedChecks?.length || 0} failed</span>
+                            <span className="text-danger">{reproReport.reproducibilityReport.failedChecks?.length ?? 0} failed</span>
                           </div>
                           <div className="d-flex flex-column gap-1.5">
                             {reproReport.reproducibilityReport.checks.map((check, idx) => (
@@ -655,8 +697,16 @@ export default function AssessmentReports() {
                         </div>
                       )}
                     </div>
+                  ) : reproFailure ? (
+                    <div className="d-flex justify-content-between align-items-center rounded border border-danger-subtle bg-danger-subtle p-3">
+                      <div>
+                        <div className="fw-semibold text-danger">Audit failed</div>
+                        <div className="text-danger">{reproFailure.score ?? 0}/100</div>
+                      </div>
+                      <Badge bg="danger">{reproFailure.status}</Badge>
+                    </div>
                   ) : (
-                    <div className="text-center py-5 text-muted">No reproducibility reports found. Trigger an environment audit above to verify build locks.</div>
+                    <div className="text-center py-5 text-muted">No project files uploaded yet. Upload your research artifacts to run the audit.</div>
                   )}
                 </Card>
               </Col>

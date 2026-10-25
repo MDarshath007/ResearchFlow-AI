@@ -1,7 +1,7 @@
 import React from 'react';
-import { Award, Compass, Star, Trophy } from 'lucide-react';
+import { AlertTriangle, Award, Compass, Star, Trophy } from 'lucide-react';
 
-export default function MaturityBadge({ score }) {
+export default function MaturityBadge({ score, status }) {
   const getBadgeDetails = (score) => {
     if (score <= 40) {
       return {
@@ -35,13 +35,18 @@ export default function MaturityBadge({ score }) {
     };
   };
 
-  const { level, className, icon, description } = getBadgeDetails(score || 0);
+  const failed = status === 'Failed';
+  const details = getBadgeDetails(score ?? 0);
+  const { description } = details;
+  const icon = failed ? <AlertTriangle size={16} /> : details.icon;
+  const level = failed ? status : details.level;
+  const className = failed ? 'bg-danger' : details.className;
 
   return (
-    <div className="d-flex align-items-center gap-2" title={description}>
+    <div className="d-flex align-items-center gap-2" title={failed ? 'Assessment failed.' : description}>
       <span className={`badge ${className} d-inline-flex align-items-center gap-1.5 px-2.5 py-1.5 rounded-pill font-display fw-bold`} style={{ letterSpacing: '0.5px' }}>
         {icon}
-        <span>{level} ({score || 0})</span>
+        <span>{level} ({score ?? 0})</span>
       </span>
     </div>
   );
