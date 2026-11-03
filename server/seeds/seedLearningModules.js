@@ -6,11 +6,15 @@
 
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import connectDB from '../config/db.js';
 import LearningModule from '../models/LearningModule.js';
 import learningModules from './learningContent.js';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 export const seedLearningModules = async () => {
   await connectDB();
@@ -18,24 +22,42 @@ export const seedLearningModules = async () => {
     throw new Error('Seed aborted: could not connect to MongoDB.');
   }
 
+  // Validate all content before touching the collection.
+  for (const moduleContent of learningModules) {
+    await new LearningModule(moduleContent).validate();
+  }
+
   let created = 0;
   let updated = 0;
+  let cleared = 0;
+  const clearCollection = process.argv.includes('--clear');
 
-  for (const mod of learningModules) {
-    const existing = await LearningModule.findOne({ slug: mod.slug }).select('_id');
-    if (existing) {
-      // $set keeps _id/createdAt intact while refreshing content.
-      await LearningModule.updateOne({ _id: existing._id }, { $set: mod });
-      updated += 1;
-    } else {
-      await LearningModule.create(mod);
-      created += 1;
-    }
+  if (clearCollection) {
+    const result = await LearningModule.deleteMany({
+      slug: { $in: learningModules.map((moduleContent) => moduleContent.slug) },
+    });
+    cleared = result.deletedCount || 0;
+    await LearningModule.insertMany(learningModules, { ordered: true });
+    created = learningModules.length;
+  } else {
+    const operations = learningModules.map((moduleContent) => ({
+      replaceOne: {
+        filter: { slug: moduleContent.slug },
+        replacement: moduleContent,
+        upsert: true,
+      },
+    }));
+
+    const result = await LearningModule.bulkWrite(operations, { ordered: true });
+    created = result.upsertedCount || 0;
+    updated = result.modifiedCount || 0;
   }
 
   const total = await LearningModule.countDocuments({ slug: { $in: learningModules.map((m) => m.slug) } });
-  console.log(`Learning modules seed complete: ${created} created, ${updated} updated, ${total} total in DB.`);
-  return { created, updated, total };
+  console.log(
+    `Learning modules seed complete: ${cleared} cleared, ${created} created, ${updated} updated, ${total} total in DB.`
+  );
+  return { cleared, created, updated, total };
 };
 
 const run = async () => {

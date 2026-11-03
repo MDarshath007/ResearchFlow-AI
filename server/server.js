@@ -28,12 +28,28 @@ connectDB();
 
 const app = express();
 
-// Body parser
+// Middleware must be mounted before route declarations
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Enable CORS
-app.use(cors());
+// Enable CORS - allow both local dev origins and the deployed client URL
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  // Strip any trailing slash from the env variable so origin matching works
+  process.env.CLIENT_URL?.replace(/\/$/, ''),
+].filter(Boolean);   // remove undefined/null entries
+
+app.use(cors({
+  origin(origin, callback) {
+    // Allow requests with no origin (e.g. server-to-server, Postman, curl)
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
 
 // Set static uploads folder
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -62,7 +78,7 @@ app.use('/api', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, _next) => {
+app.use((err, req, res, next) => {
   console.error(err.stack || err.message);
   const isMulter = err.name === 'MulterError' || (typeof err.code === 'string' && err.code.startsWith('LIMIT_'));
   const status = isMulter ? 400 : (err.status || err.statusCode || 500);
@@ -84,4 +100,3 @@ process.on('unhandledRejection', (err) => {
   // Close server & exit process
   server.close(() => process.exit(1));
 });
-

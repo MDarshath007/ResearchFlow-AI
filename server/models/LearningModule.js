@@ -39,6 +39,14 @@ const quizQuestionSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
+      validate: {
+        validator: function validateCorrectAnswer(value) {
+          return Number.isInteger(value) &&
+            Array.isArray(this.options) &&
+            value < this.options.length;
+        },
+        message: 'correctAnswer must be a valid index into options',
+      },
     },
     explanation: {
       type: String,
